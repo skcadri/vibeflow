@@ -7,7 +7,7 @@ from enum import Enum, auto
 from typing import Optional
 
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QObject, pyqtSignal, QEvent, QCoreApplication
 
 from .config import config
 from .audio.capture import AudioCapture
@@ -34,9 +34,27 @@ class AppState(Enum):
     PROCESSING = auto()
 
 
-class SignalHelper(QObject):
-    """Helper class for thread-safe signals."""
-    open_settings_signal = pyqtSignal()
+class OpenSettingsEvent(QEvent):
+    """Custom event for opening settings window."""
+    EVENT_TYPE = QEvent.Type(QEvent.registerEventType())
+
+    def __init__(self):
+        super().__init__(OpenSettingsEvent.EVENT_TYPE)
+
+
+class MedASRAppEventHandler(QObject):
+    """Event handler for the main app to receive custom events."""
+
+    def __init__(self, app):
+        super().__init__()
+        self.app = app
+
+    def event(self, event):
+        if event.type() == OpenSettingsEvent.EVENT_TYPE:
+            logger.info("Received OpenSettingsEvent, calling _do_open_settings...")
+            self.app._do_open_settings()
+            return True
+        return super().event(event)
 
 
 class MedASRApp:
@@ -49,9 +67,8 @@ class MedASRApp:
         # Initialize Qt application
         self.qt_app = QApplication(sys.argv)
 
-        # Signal helper for thread-safe communication
-        self.signal_helper = SignalHelper()
-        self.signal_helper.open_settings_signal.connect(self._do_open_settings)
+        # Event handler for custom events
+        self.event_handler = MedASRAppEventHandler(self)
 
         # Model management - all available models
         self.models = {
@@ -265,9 +282,11 @@ class MedASRApp:
                     self.bubble.set_state("idle")
 
     def _open_settings(self):
-        """Open settings window (thread-safe via Qt signal)."""
-        logger.info("_open_settings called from thread, emitting signal...")
-        self.signal_helper.open_settings_signal.emit()
+        """Open settings window (thread-safe via Qt event)."""
+        logger.info("_open_settings called from thread, posting event...")
+        event = OpenSettingsEvent()
+        QCoreApplication.postEvent(self.event_handler, event)
+        logger.info("Event posted successfully")
 
     def _do_open_settings(self):
         """Actually open the settings window (runs on Qt main thread)."""
