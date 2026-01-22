@@ -39,8 +39,15 @@ class WhisperBaseTranscriber:
             logger.error(f"Failed to load {self.model_size}: {e}")
             raise
 
-    def transcribe(self, audio: np.ndarray, sample_rate: int = 16000) -> str:
-        """Transcribe audio to text."""
+    def transcribe(self, audio: np.ndarray, sample_rate: int = 16000, hotwords: str = None) -> str:
+        """
+        Transcribe audio to text.
+
+        Args:
+            audio: Audio data array
+            sample_rate: Sample rate (must be 16000)
+            hotwords: Optional hotwords string for vocabulary boost
+        """
         if not self._initialized:
             raise RuntimeError("Model not initialized")
 
@@ -55,7 +62,8 @@ class WhisperBaseTranscriber:
                 audio,
                 language="en",
                 vad_filter=True,
-                vad_parameters=dict(min_silence_duration_ms=500)
+                vad_parameters=dict(min_silence_duration_ms=500),
+                hotwords=hotwords
             )
 
             text_parts = [segment.text.strip() for segment in segments]

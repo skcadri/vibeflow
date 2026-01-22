@@ -40,6 +40,7 @@ class SystemTray:
         self.app = app
         self.icon = None
         self.current_model = "whisper_base"  # Default
+        self.on_settings_open = None  # Callback for double-click
 
     def _create_model_switcher(self, model_key: str, display_name: str):
         """Create a model switch callback."""
@@ -114,6 +115,11 @@ class SystemTray:
             item('Quit', self._on_quit)
         )
 
+    def _on_double_click(self):
+        """Handle double-click on tray icon."""
+        if self.on_settings_open:
+            self.on_settings_open()
+
     def run(self):
         """Start the system tray icon."""
         icon_image = create_icon()
@@ -123,6 +129,9 @@ class SystemTray:
             "MedASR - Voice Dictation",
             menu=self._create_menu()
         )
+
+        # Set double-click handler (on_activate in pystray)
+        self.icon.on_activate = self._on_double_click
 
         # Run in separate thread
         thread = threading.Thread(target=self.icon.run, daemon=True)

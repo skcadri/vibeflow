@@ -20,6 +20,8 @@ from .input.hotkeys import HotkeyListener
 from .input.typer import type_text
 from .ui.bubble import FloatingBubble
 from .ui.tray import SystemTray
+from .history.storage import HistoryStorage
+from .vocabulary.manager import VocabularyManager
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +73,15 @@ class MedASRApp:
 
         self.bubble: Optional[FloatingBubble] = None
         self.tray: Optional[SystemTray] = None
+
+        # Initialize vocabulary manager
+        self.vocabulary_manager = VocabularyManager()
+
+        # Initialize history storage
+        self.history_storage = HistoryStorage()
+
+        # Settings window (created lazily on first open)
+        self.settings_window = None
 
         # Initialize transcriber in background
         self._init_transcriber_async()
@@ -210,13 +221,24 @@ class MedASRApp:
                 logger.error("Model not ready yet - please wait for initialization to complete")
                 return
 
+            # Get hotwords from vocabulary
+            hotwords = self.vocabulary_manager.get_hotwords_string()
+
             # Transcribe
             text = self.transcriber.transcribe(
                 audio_data,
-                sample_rate=config.get('audio.sample_rate', 16000)
+                sample_rate=config.get('audio.sample_rate', 16000),
+                hotwords=hotwords
             )
 
             if text:
+                # Save to history
+                self.history_storage.add(
+                    text=text,
+                    model=self.current_model,
+                    duration=duration
+                )
+
                 # Type the text
                 logger.info(f"Typing: {text}")
                 type_text(text + " ")
@@ -232,12 +254,39 @@ class MedASRApp:
                 if self.bubble:
                     self.bubble.set_state("idle")
 
+    def _open_settings(self):
+        """Open settings window (thread-safe via Qt signal)."""
+        from PyQt6.QtCore import QMetaObject, Qt
+
+        def create_and_show():
+            if self.settings_window is None:
+                # Lazy import to avoid circular imports
+                from .ui.settings_window import SettingsWindow
+                self.settings_window = SettingsWindow(self)
+                self.settings_window.model_changed.connect(self.switch_model)
+                self.settings_window.vocabulary_changed.connect(self._on_vocabulary_changed)
+            self.settings_window.show_and_focus()
+            # Refresh history when opening
+            self.settings_window.refresh_history()
+
+        # Thread-safe call to Qt main thread
+        QMetaObject.invokeMethod(
+            self.qt_app,
+            create_and_show,
+            Qt.ConnectionType.QueuedConnection
+        )
+
+    def _on_vocabulary_changed(self, words: list):
+        """Handle vocabulary update."""
+        logger.info(f"Vocabulary updated: {len(words)} words")
+
     def run(self):
         """Run the application."""
         logger.info("Starting MedASR...")
         logger.info("Press Ctrl+Win to start/stop dictation")
         logger.info("Press Escape while recording to cancel")
         logger.info("Right-click system tray icon to switch models")
+        logger.info("Double-click system tray icon to open settings")
 
         # Start audio stream
         try:
@@ -254,6 +303,7 @@ class MedASRApp:
 
         # Create system tray icon
         self.tray = SystemTray(self)
+        self.tray.on_settings_open = self._open_settings  # Connect double-click
         self.tray.run()
 
         # Run Qt event loop
