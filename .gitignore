@@ -1,0 +1,26 @@
+# Virtual environment
+venv/
+*.pyc
+__pycache__/
+
+# Environment variables (contains secrets!)
+.env
+
+# Logs
+*.log
+
+# Model cache
+models/
+
+# PyInstaller build
+build/
+dist/
+*.spec
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
