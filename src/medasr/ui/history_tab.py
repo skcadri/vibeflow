@@ -5,7 +5,7 @@ from datetime import datetime
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
     QTableWidgetItem, QPushButton, QLabel, QHeaderView,
-    QAbstractItemView, QMessageBox
+    QAbstractItemView, QMessageBox, QApplication
 )
 
 logger = logging.getLogger(__name__)
@@ -54,6 +54,9 @@ class HistoryTab(QWidget):
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
 
+        # Connect click event to copy text to clipboard
+        self.table.cellClicked.connect(self._on_cell_clicked)
+
         # Column sizing
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
@@ -63,10 +66,31 @@ class HistoryTab(QWidget):
 
         layout.addWidget(self.table)
 
+        # Hint label
+        hint = QLabel("Click any row to copy the transcribed text to clipboard")
+        hint.setObjectName("description")
+        layout.addWidget(hint)
+
         # Status bar
         self.status_label = QLabel("0 entries")
         self.status_label.setObjectName("description")
         layout.addWidget(self.status_label)
+
+    def _on_cell_clicked(self, row, column):
+        """Handle cell click - copy text to clipboard."""
+        # Get the text from column 1 (Text column)
+        text_item = self.table.item(row, 1)
+        if text_item:
+            text = text_item.text()
+            clipboard = QApplication.clipboard()
+            clipboard.setText(text)
+            logger.info(f"Copied to clipboard: {text[:50]}...")
+            # Update status temporarily to show feedback
+            old_status = self.status_label.text()
+            self.status_label.setText("✓ Copied to clipboard!")
+            # Reset after 2 seconds
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(2000, lambda: self.status_label.setText(old_status))
 
     def load_history(self):
         """Load history from storage."""

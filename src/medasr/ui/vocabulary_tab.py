@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QLineEdit, QPushButton, QLabel,
     QMessageBox
 )
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import pyqtSignal, Qt
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +61,9 @@ class VocabularyTab(QWidget):
         # Word list
         self.word_list = QListWidget()
         self.word_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
+        # Enable double-click to edit
+        self.word_list.itemDoubleClicked.connect(self._on_item_double_clicked)
+        self.word_list.itemChanged.connect(self._on_item_changed)
         layout.addWidget(self.word_list)
 
         # Action buttons
@@ -80,10 +83,27 @@ class VocabularyTab(QWidget):
 
         layout.addLayout(btn_layout)
 
+        # Hints
+        hint = QLabel("Double-click any word to edit it")
+        hint.setObjectName("description")
+        layout.addWidget(hint)
+
         # Word count
         self.count_label = QLabel("0 words")
         self.count_label.setObjectName("description")
         layout.addWidget(self.count_label)
+
+    def _on_item_double_clicked(self, item):
+        """Handle double-click on item to edit."""
+        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+        self.word_list.editItem(item)
+
+    def _on_item_changed(self, item):
+        """Handle item text change after editing."""
+        # Make item non-editable again
+        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        # Save the updated vocabulary
+        self._save_and_emit()
 
     def _load_vocabulary(self):
         """Load vocabulary from manager."""
