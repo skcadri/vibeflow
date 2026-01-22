@@ -311,8 +311,14 @@ class MedASRApp:
 
     def cleanup(self):
         """Cleanup resources."""
-        logger.info("Cleaning up...")
-        self.hotkeys.stop()
-        self.audio.stop()
-        if self.tray:
-            self.tray.stop()
+        # Make this idempotent (can be called multiple times safely)
+        if not hasattr(self, '_cleaned_up'):
+            logger.info("Cleaning up...")
+            self._cleaned_up = True
+
+            self.hotkeys.stop()
+            self.audio.stop()
+            if self.tray:
+                self.tray.stop()
+
+            logger.info("Cleanup complete")

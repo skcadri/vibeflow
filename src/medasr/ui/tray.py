@@ -41,6 +41,7 @@ class SystemTray:
         self.icon = None
         self.current_model = "whisper_base"  # Default
         self.on_settings_open = None  # Callback for double-click
+        self._thread = None  # Thread reference for cleanup
 
     def _create_model_switcher(self, model_key: str, display_name: str):
         """Create a model switch callback."""
@@ -51,11 +52,18 @@ class SystemTray:
             self._update_menu()
         return switch
 
+    def _on_settings(self):
+        """Open settings window."""
+        logger.info("Settings requested from tray")
+        if self.on_settings_open:
+            self.on_settings_open()
+
     def _on_quit(self):
         """Quit the application."""
         logger.info("Quit requested from tray")
-        self.icon.stop()
+        # Cleanup first (which will call our stop() method)
         self.app.cleanup()
+        # Then quit Qt
         self.app.qt_app.quit()
 
     def _update_menu(self):
@@ -66,6 +74,9 @@ class SystemTray:
     def _create_menu(self):
         """Create the system tray menu."""
         return pystray.Menu(
+            # Settings at the top
+            item('Settings...', self._on_settings),
+            pystray.Menu.SEPARATOR,
             # Whisper Models - Fast & Balanced
             item(
                 'Whisper Base (Recommended)',
@@ -131,14 +142,25 @@ class SystemTray:
         )
 
         # Set double-click handler (on_activate in pystray)
+        # Note: on Windows, this fires on left-click, not double-click
         self.icon.on_activate = self._on_double_click
 
         # Run in separate thread
-        thread = threading.Thread(target=self.icon.run, daemon=True)
-        thread.start()
+        self._thread = threading.Thread(target=self.icon.run, daemon=True)
+        self._thread.start()
         logger.info("System tray icon started")
 
     def stop(self):
         """Stop the system tray icon."""
-        if self.icon:
-            self.icon.stop()
+        if self.icon and self.icon.visible:
+            logger.info("Stopping system tray icon...")
+            try:
+                # Ensure icon is marked as not visible
+                self.icon.visible = False
+                # Stop the icon loop
+                self.icon.stop()
+                logger.info("System tray icon stopped")
+            except Exception as e:
+                logger.error(f"Error stopping tray icon: {e}")
+        else:
+            logger.debug("Tray icon already stopped or not visible")
