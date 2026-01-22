@@ -256,7 +256,7 @@ class MedASRApp:
 
     def _open_settings(self):
         """Open settings window (thread-safe via Qt signal)."""
-        from PyQt6.QtCore import QMetaObject, Qt
+        from PyQt6.QtCore import QTimer
 
         def create_and_show():
             if self.settings_window is None:
@@ -269,12 +269,8 @@ class MedASRApp:
             # Refresh history when opening
             self.settings_window.refresh_history()
 
-        # Thread-safe call to Qt main thread
-        QMetaObject.invokeMethod(
-            self.qt_app,
-            create_and_show,
-            Qt.ConnectionType.QueuedConnection
-        )
+        # Thread-safe call to Qt main thread using QTimer.singleShot
+        QTimer.singleShot(0, create_and_show)
 
     def _on_vocabulary_changed(self, words: list):
         """Handle vocabulary update."""
