@@ -7,6 +7,7 @@ from enum import Enum, auto
 from typing import Optional
 
 from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import QObject, pyqtSignal
 
 from .config import config
 from .audio.capture import AudioCapture
@@ -33,6 +34,11 @@ class AppState(Enum):
     PROCESSING = auto()
 
 
+class SignalHelper(QObject):
+    """Helper class for thread-safe signals."""
+    open_settings_signal = pyqtSignal()
+
+
 class MedASRApp:
     """Main application controller."""
 
@@ -42,6 +48,10 @@ class MedASRApp:
 
         # Initialize Qt application
         self.qt_app = QApplication(sys.argv)
+
+        # Signal helper for thread-safe communication
+        self.signal_helper = SignalHelper()
+        self.signal_helper.open_settings_signal.connect(self._do_open_settings)
 
         # Model management - all available models
         self.models = {
@@ -256,36 +266,33 @@ class MedASRApp:
 
     def _open_settings(self):
         """Open settings window (thread-safe via Qt signal)."""
-        from PyQt6.QtCore import QTimer
-        logger.info("_open_settings called")
+        logger.info("_open_settings called from thread, emitting signal...")
+        self.signal_helper.open_settings_signal.emit()
 
-        def create_and_show():
-            try:
-                logger.info("create_and_show executing...")
-                if self.settings_window is None:
-                    logger.info("Creating new settings window...")
-                    # Lazy import to avoid circular imports
-                    from .ui.settings_window import SettingsWindow
-                    self.settings_window = SettingsWindow(self)
-                    self.settings_window.model_changed.connect(self.switch_model)
-                    self.settings_window.vocabulary_changed.connect(self._on_vocabulary_changed)
-                    logger.info("Settings window created")
-                else:
-                    logger.info("Settings window already exists")
+    def _do_open_settings(self):
+        """Actually open the settings window (runs on Qt main thread)."""
+        try:
+            logger.info("_do_open_settings executing on Qt thread...")
+            if self.settings_window is None:
+                logger.info("Creating new settings window...")
+                # Lazy import to avoid circular imports
+                from .ui.settings_window import SettingsWindow
+                self.settings_window = SettingsWindow(self)
+                self.settings_window.model_changed.connect(self.switch_model)
+                self.settings_window.vocabulary_changed.connect(self._on_vocabulary_changed)
+                logger.info("Settings window created")
+            else:
+                logger.info("Settings window already exists")
 
-                logger.info("Showing settings window...")
-                self.settings_window.show_and_focus()
-                logger.info("Settings window shown")
+            logger.info("Showing settings window...")
+            self.settings_window.show_and_focus()
+            logger.info("Settings window shown")
 
-                # Refresh history when opening
-                self.settings_window.refresh_history()
-                logger.info("History refreshed")
-            except Exception as e:
-                logger.error(f"Error in create_and_show: {e}", exc_info=True)
-
-        # Thread-safe call to Qt main thread using QTimer.singleShot
-        logger.info("Scheduling create_and_show with QTimer...")
-        QTimer.singleShot(0, create_and_show)
+            # Refresh history when opening
+            self.settings_window.refresh_history()
+            logger.info("History refreshed")
+        except Exception as e:
+            logger.error(f"Error in _do_open_settings: {e}", exc_info=True)
 
     def _on_vocabulary_changed(self, words: list):
         """Handle vocabulary update."""
