@@ -43,7 +43,7 @@ C:\code\medasr\
 │   │   ├── hotkeys.py        # Global hotkey listener (pynput)
 │   │   └── typer.py          # Clipboard paste at cursor
 │   ├── postprocessing/
-│   │   └── formatter.py      # Local LLM text formatter (Qwen2-0.5B)
+│   │   └── formatter.py      # Local LLM text formatter (Phi-3-mini)
 │   ├── ui/
 │   │   ├── bubble.py         # Floating bubble window (PyQt6)
 │   │   ├── tray.py           # System tray icon (pystray)
@@ -87,16 +87,17 @@ C:\code\medasr\
 
 Enable in Settings → Formatting tab to use a local AI model for text post-processing:
 
-- **Model**: Qwen2-1.5B-Instruct (~1.5GB VRAM)
-- **Features**: Paragraph breaks, bullet lists, proper email structure
+- **Model**: Phi-3-mini-4k-instruct (~2.5GB VRAM)
+- **Features**: Paragraph breaks, bullet lists - preserves original words exactly
+- **Fix Typos**: Optional setting to also fix obvious spelling mistakes
 - **Toggle**: Enable/disable anytime, model unloads when disabled to free VRAM
 
 **Examples:**
 - "I need milk, eggs, and bread" → bullet list
 - "Hi how are you. Thanks. Regards." → properly spaced email with line breaks
-- Lists of items → bullet points
+- With "Fix typos" on: "meetting" → "meeting"
 
-**Note:** First enable downloads the model (~1GB). Disabled by default.
+**Note:** First enable downloads the model (~2GB). Disabled by default.
 
 ## Thread Safety
 

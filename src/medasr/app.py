@@ -302,8 +302,9 @@ class MedASRApp:
             if text:
                 # Format text if enabled
                 if config.get('formatting.enabled', False) and self.formatter.is_initialized():
-                    logger.info("Formatting text...")
-                    formatted_text = self.formatter.format_text(text)
+                    fix_typos = config.get('formatting.fix_typos', False)
+                    logger.info(f"Formatting text (fix_typos={fix_typos})...")
+                    formatted_text = self.formatter.format_text(text, fix_typos=fix_typos)
                     if formatted_text != text:
                         logger.info(f"Formatted: '{text[:30]}...' -> '{formatted_text[:30]}...'")
                         text = formatted_text

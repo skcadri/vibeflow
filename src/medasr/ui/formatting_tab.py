@@ -37,9 +37,9 @@ class FormattingTab(QWidget):
         layout.addWidget(title)
 
         desc = QLabel(
-            "Use a local AI model (Qwen2-0.5B) to intelligently format transcribed text. "
-            "Automatically adds proper capitalization, punctuation, converts lists to bullet points, "
-            "and adds paragraph breaks where appropriate."
+            "Use a local AI model (Phi-3-mini) to format transcribed text. "
+            "Adds line breaks between sentences and converts comma-separated lists to bullet points. "
+            "The model preserves your original words exactly."
         )
         desc.setObjectName("description")
         desc.setWordWrap(True)
@@ -55,6 +55,12 @@ class FormattingTab(QWidget):
         self.enable_checkbox = QCheckBox("Enable text formatting")
         self.enable_checkbox.stateChanged.connect(self._on_enable_changed)
         toggle_layout.addWidget(self.enable_checkbox)
+
+        # Fix typos checkbox
+        self.fix_typos_checkbox = QCheckBox("Also fix obvious typos")
+        self.fix_typos_checkbox.setEnabled(False)  # Disabled until formatting is enabled
+        self.fix_typos_checkbox.stateChanged.connect(self._on_fix_typos_changed)
+        toggle_layout.addWidget(self.fix_typos_checkbox)
 
         # Status label
         self.status_label = QLabel("")
@@ -73,13 +79,12 @@ class FormattingTab(QWidget):
         info_layout.addWidget(info_title)
 
         info_text = QLabel(
-            "When enabled, a small AI model (~0.5GB VRAM) runs locally to format your "
-            "transcriptions before pasting them. The model is unloaded from memory when "
-            "you disable this feature.\n\n"
+            "When enabled, a local AI model (~2.5GB VRAM) formats your transcriptions "
+            "before pasting them. The model is unloaded from memory when disabled.\n\n"
             "Examples:\n"
-            "- 'i need milk eggs and bread' → bullet list\n"
-            "- 'first point second point' → numbered or separated paragraphs\n"
-            "- 'hello how are you' → 'Hello, how are you?'"
+            "- 'I need milk, eggs, bread' → bullet list\n"
+            "- 'Hi how are you. I wanted to ask...' → proper paragraph breaks\n\n"
+            "With 'Fix typos' enabled, obvious spelling mistakes are also corrected."
         )
         info_text.setObjectName("description")
         info_text.setWordWrap(True)
@@ -92,7 +97,7 @@ class FormattingTab(QWidget):
 
         # Note about first-time download
         note_label = QLabel(
-            "Note: The model will be downloaded automatically on first enable (~400MB)."
+            "Note: The model will be downloaded automatically on first enable (~2.5GB)."
         )
         note_label.setObjectName("description")
         note_label.setWordWrap(True)
@@ -101,7 +106,10 @@ class FormattingTab(QWidget):
     def _load_settings(self):
         """Load current settings."""
         enabled = config.get('formatting.enabled', False)
+        fix_typos = config.get('formatting.fix_typos', False)
         self.enable_checkbox.setChecked(enabled)
+        self.fix_typos_checkbox.setChecked(fix_typos)
+        self.fix_typos_checkbox.setEnabled(enabled)
         self._update_status()
 
     def _on_enable_changed(self, state):
@@ -112,12 +120,22 @@ class FormattingTab(QWidget):
         config.set('formatting.enabled', enabled)
         config.save()
 
+        # Enable/disable fix typos checkbox
+        self.fix_typos_checkbox.setEnabled(enabled)
+
         if enabled:
             self._load_model()
         else:
             self._unload_model()
 
         self.formatting_toggled.emit(enabled)
+
+    def _on_fix_typos_changed(self, state):
+        """Handle fix typos checkbox change."""
+        fix_typos = state == 2  # Qt.CheckState.Checked
+        config.set('formatting.fix_typos', fix_typos)
+        config.save()
+        logger.info(f"Fix typos {'enabled' if fix_typos else 'disabled'}")
 
     def _load_model(self):
         """Load the formatter model in background."""

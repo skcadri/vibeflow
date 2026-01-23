@@ -1,4 +1,4 @@
-"""Local LLM text formatter using Qwen2-0.5B for post-processing."""
+"""Local LLM text formatter using Phi-3-mini for post-processing."""
 
 import gc
 import logging
@@ -7,35 +7,82 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Formatting prompt for the LLM - uses few-shot examples for better results
-FORMATTING_PROMPT = """<|im_start|>system
-Add line breaks to structure the text. Separate greetings, paragraphs, and sign-offs with blank lines. Make lists into bullet points.<|im_end|>
-<|im_start|>user
-Hi, how are you? I wanted to ask about the meeting. Thanks. John.<|im_end|>
-<|im_start|>assistant
+# Formatting prompt - strict mode (preserves original words exactly)
+FORMATTING_PROMPT_STRICT = """<|user|>
+You are a text formatter. Your ONLY job is to add line breaks and bullet points.
+
+CRITICAL RULES:
+1. DO NOT change any words
+2. DO NOT add or remove any words
+3. DO NOT rephrase anything
+4. ONLY add line breaks between sentences when appropriate
+5. ONLY convert comma-separated lists to bullet points
+6. Keep ALL original words exactly as they are
+
+Example 1:
+Input: Hi, how are you? I wanted to ask about the meeting. Thanks. John.
+Output:
 Hi, how are you?
 
 I wanted to ask about the meeting.
 
 Thanks.
 
-John.<|im_end|>
-<|im_start|>user
-I need milk, eggs, bread, and butter from the store.<|im_end|>
-<|im_start|>assistant
-I need from the store:
+John.
+
+Example 2:
+Input: I need milk, eggs, bread, and butter.
+Output:
+I need:
 - milk
 - eggs
 - bread
-- butter<|im_end|>
-<|im_start|>user
-{text}<|im_end|>
-<|im_start|>assistant
+- butter
+
+Now format this text (preserve ALL original words):
+{text}<|end|>
+<|assistant|>
+"""
+
+# Formatting prompt - typo fix mode (can fix obvious typos)
+FORMATTING_PROMPT_TYPOFIX = """<|user|>
+You are a text formatter. Add line breaks, bullet points, and fix obvious typos.
+
+RULES:
+1. Add line breaks between sentences when appropriate
+2. Convert comma-separated lists to bullet points
+3. Fix obvious spelling mistakes and typos
+4. DO NOT rephrase or change the meaning
+5. DO NOT add new words or remove words (except fixing typos)
+
+Example 1:
+Input: Hi, how are yuo? I wantd to ask about the meetting. Thanks. John.
+Output:
+Hi, how are you?
+
+I wanted to ask about the meeting.
+
+Thanks.
+
+John.
+
+Example 2:
+Input: I need milk, egss, bread, and buttr.
+Output:
+I need:
+- milk
+- eggs
+- bread
+- butter
+
+Now format this text (fix typos, add line breaks):
+{text}<|end|>
+<|assistant|>
 """
 
 
 class LocalLLMFormatter:
-    """Formats transcribed text using a local Qwen2-0.5B model."""
+    """Formats transcribed text using a local Phi-3-mini model."""
 
     def __init__(self):
         self.model = None
@@ -50,13 +97,13 @@ class LocalLLMFormatter:
                 return True
 
             try:
-                logger.info("Loading Qwen2-0.5B formatter model...")
+                logger.info("Loading Phi-3-mini formatter model...")
                 from llama_cpp import Llama
 
                 self.model = Llama.from_pretrained(
-                    repo_id="Qwen/Qwen2-1.5B-Instruct-GGUF",
-                    filename="qwen2-1_5b-instruct-q4_k_m.gguf",
-                    n_ctx=512,
+                    repo_id="microsoft/Phi-3-mini-4k-instruct-gguf",
+                    filename="Phi-3-mini-4k-instruct-q4.gguf",
+                    n_ctx=1024,
                     n_gpu_layers=-1,  # All layers on GPU
                     verbose=False
                 )
@@ -100,12 +147,13 @@ class LocalLLMFormatter:
         with self._lock:
             return self._initialized and self.model is not None
 
-    def format_text(self, raw_text: str) -> str:
+    def format_text(self, raw_text: str, fix_typos: bool = False) -> str:
         """
         Format transcribed text using the LLM.
 
         Args:
             raw_text: Raw transcription text
+            fix_typos: If True, also fix obvious typos
 
         Returns:
             Formatted text, or original text if formatting fails
@@ -119,12 +167,16 @@ class LocalLLMFormatter:
                 return raw_text
 
             try:
-                prompt = FORMATTING_PROMPT.format(text=raw_text)
+                # Choose prompt based on typo fix setting
+                if fix_typos:
+                    prompt = FORMATTING_PROMPT_TYPOFIX.format(text=raw_text)
+                else:
+                    prompt = FORMATTING_PROMPT_STRICT.format(text=raw_text)
 
                 output = self.model(
                     prompt,
                     max_tokens=512,
-                    stop=["<|im_end|>", "<|im_start|>"],
+                    stop=["<|end|>", "<|user|>", "<|assistant|>"],
                     temperature=0.1,
                     echo=False
                 )
