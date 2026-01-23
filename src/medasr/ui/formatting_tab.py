@@ -4,11 +4,14 @@ import logging
 import threading
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QCheckBox, QFrame
+    QLabel, QCheckBox, QFrame, QTextEdit,
+    QPushButton, QScrollArea
 )
 from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtGui import QFont
 
 from ..config import config
+from ..postprocessing.formatter import DEFAULT_PROMPT_STRICT, DEFAULT_PROMPT_TYPOFIX
 
 logger = logging.getLogger(__name__)
 
@@ -69,35 +72,40 @@ class FormattingTab(QWidget):
 
         layout.addWidget(toggle_frame)
 
-        # Info section
-        info_frame = QFrame()
-        info_frame.setObjectName("card")
-        info_layout = QVBoxLayout(info_frame)
+        # Prompt editor section
+        prompt_frame = QFrame()
+        prompt_frame.setObjectName("card")
+        prompt_layout = QVBoxLayout(prompt_frame)
 
-        info_title = QLabel("How it works")
-        info_title.setObjectName("sectionTitle")
-        info_layout.addWidget(info_title)
+        prompt_header = QHBoxLayout()
+        prompt_title = QLabel("Formatting Prompt")
+        prompt_title.setObjectName("sectionTitle")
+        prompt_header.addWidget(prompt_title)
 
-        info_text = QLabel(
-            "When enabled, a local AI model (~2.5GB VRAM) formats your transcriptions "
-            "before pasting them. The model is unloaded from memory when disabled.\n\n"
-            "Examples:\n"
-            "- 'I need milk, eggs, bread' → bullet list\n"
-            "- 'Hi how are you. I wanted to ask...' → proper paragraph breaks\n\n"
-            "With 'Fix typos' enabled, obvious spelling mistakes are also corrected."
+        self.reset_btn = QPushButton("Reset to Default")
+        self.reset_btn.clicked.connect(self._reset_prompt)
+        prompt_header.addWidget(self.reset_btn)
+        prompt_layout.addLayout(prompt_header)
+
+        prompt_desc = QLabel(
+            "Edit the prompt to customize formatting behavior. Use {text} as placeholder for input. "
+            "The prompt shown depends on 'Fix typos' setting above."
         )
-        info_text.setObjectName("description")
-        info_text.setWordWrap(True)
-        info_layout.addWidget(info_text)
+        prompt_desc.setObjectName("description")
+        prompt_desc.setWordWrap(True)
+        prompt_layout.addWidget(prompt_desc)
 
-        layout.addWidget(info_frame)
+        self.prompt_edit = QTextEdit()
+        self.prompt_edit.setMinimumHeight(200)
+        self.prompt_edit.setFont(QFont("Consolas", 9))
+        self.prompt_edit.textChanged.connect(self._on_prompt_changed)
+        prompt_layout.addWidget(self.prompt_edit)
 
-        # Add stretch to push everything to top
-        layout.addStretch()
+        layout.addWidget(prompt_frame)
 
         # Note about first-time download
         note_label = QLabel(
-            "Note: The model will be downloaded automatically on first enable (~2.5GB)."
+            "Note: Model downloads on first enable (~2.5GB). Uses Phi-3-mini-4k-instruct."
         )
         note_label.setObjectName("description")
         note_label.setWordWrap(True)
@@ -110,7 +118,21 @@ class FormattingTab(QWidget):
         self.enable_checkbox.setChecked(enabled)
         self.fix_typos_checkbox.setChecked(fix_typos)
         self.fix_typos_checkbox.setEnabled(enabled)
+        self._load_prompt()
         self._update_status()
+
+    def _load_prompt(self):
+        """Load the appropriate prompt into the editor."""
+        fix_typos = self.fix_typos_checkbox.isChecked()
+        if fix_typos:
+            prompt = config.get('formatting.prompt_typofix', DEFAULT_PROMPT_TYPOFIX)
+        else:
+            prompt = config.get('formatting.prompt_strict', DEFAULT_PROMPT_STRICT)
+
+        # Block signals to avoid triggering save while loading
+        self.prompt_edit.blockSignals(True)
+        self.prompt_edit.setPlainText(prompt)
+        self.prompt_edit.blockSignals(False)
 
     def _on_enable_changed(self, state):
         """Handle enable checkbox change."""
@@ -136,6 +158,31 @@ class FormattingTab(QWidget):
         config.set('formatting.fix_typos', fix_typos)
         config.save()
         logger.info(f"Fix typos {'enabled' if fix_typos else 'disabled'}")
+        # Reload prompt for the new mode
+        self._load_prompt()
+
+    def _on_prompt_changed(self):
+        """Handle prompt text changes."""
+        prompt = self.prompt_edit.toPlainText()
+        fix_typos = self.fix_typos_checkbox.isChecked()
+
+        if fix_typos:
+            config.set('formatting.prompt_typofix', prompt)
+        else:
+            config.set('formatting.prompt_strict', prompt)
+        config.save()
+
+    def _reset_prompt(self):
+        """Reset prompt to default."""
+        fix_typos = self.fix_typos_checkbox.isChecked()
+        if fix_typos:
+            config.set('formatting.prompt_typofix', DEFAULT_PROMPT_TYPOFIX)
+            self.prompt_edit.setPlainText(DEFAULT_PROMPT_TYPOFIX)
+        else:
+            config.set('formatting.prompt_strict', DEFAULT_PROMPT_STRICT)
+            self.prompt_edit.setPlainText(DEFAULT_PROMPT_STRICT)
+        config.save()
+        logger.info("Prompt reset to default")
 
     def _load_model(self):
         """Load the formatter model in background."""

@@ -5,10 +5,12 @@ import logging
 import threading
 from typing import Optional
 
+from ..config import config
+
 logger = logging.getLogger(__name__)
 
-# Formatting prompt - strict mode (preserves original words exactly)
-FORMATTING_PROMPT_STRICT = """<|user|>
+# Default formatting prompt - strict mode (preserves original words exactly)
+DEFAULT_PROMPT_STRICT = """<|user|>
 You are a text formatter. Your ONLY job is to add line breaks and bullet points.
 
 CRITICAL RULES:
@@ -44,8 +46,8 @@ Now format this text (preserve ALL original words):
 <|assistant|>
 """
 
-# Formatting prompt - typo fix mode (can fix obvious typos)
-FORMATTING_PROMPT_TYPOFIX = """<|user|>
+# Default formatting prompt - typo fix mode (can fix obvious typos)
+DEFAULT_PROMPT_TYPOFIX = """<|user|>
 You are a text formatter. Add line breaks, bullet points, and fix obvious typos.
 
 RULES:
@@ -167,11 +169,13 @@ class LocalLLMFormatter:
                 return raw_text
 
             try:
-                # Choose prompt based on typo fix setting
+                # Get prompt template - use custom from config if available
                 if fix_typos:
-                    prompt = FORMATTING_PROMPT_TYPOFIX.format(text=raw_text)
+                    prompt_template = config.get('formatting.prompt_typofix', DEFAULT_PROMPT_TYPOFIX)
                 else:
-                    prompt = FORMATTING_PROMPT_STRICT.format(text=raw_text)
+                    prompt_template = config.get('formatting.prompt_strict', DEFAULT_PROMPT_STRICT)
+
+                prompt = prompt_template.format(text=raw_text)
 
                 output = self.model(
                     prompt,
