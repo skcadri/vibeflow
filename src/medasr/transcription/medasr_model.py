@@ -134,6 +134,18 @@ class MedASRTranscriber:
         """Check if model is initialized."""
         return self._initialized
 
+    def unload(self):
+        """Unload the model from memory to free RAM/VRAM."""
+        if self.model is not None:
+            logger.info("Unloading MedASR model from memory...")
+            del self.model
+            self.model = None
+            if self.processor is not None:
+                del self.processor
+                self.processor = None
+            self._initialized = False
+            logger.info("MedASR model unloaded")
+
 
 # Global transcriber instance
 transcriber = MedASRTranscriber()

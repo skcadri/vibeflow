@@ -79,6 +79,15 @@ class WhisperBaseTranscriber:
     def is_initialized(self) -> bool:
         return self._initialized
 
+    def unload(self):
+        """Unload the model from memory to free RAM/VRAM."""
+        if self.model is not None:
+            logger.info(f"Unloading {self.model_size} model from memory...")
+            del self.model
+            self.model = None
+            self._initialized = False
+            logger.info(f"{self.model_size} model unloaded")
+
 
 # Individual model instances
 class WhisperTiny(WhisperBaseTranscriber):

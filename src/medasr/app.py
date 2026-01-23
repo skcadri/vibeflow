@@ -1,10 +1,13 @@
 """Main application controller with state machine."""
 
+import gc
 import logging
 import sys
 import threading
 from enum import Enum, auto
 from typing import Optional
+
+import torch
 
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QObject, pyqtSignal, QEvent, QCoreApplication
@@ -159,7 +162,24 @@ class MedASRApp:
                 logger.error(f"Unknown model: {model_name}")
                 return
 
-            logger.info(f"Switching to {model_name} model...")
+            # Unload the previous model to free memory
+            old_model = self.transcriber
+            old_model_name = self.current_model
+
+            logger.info(f"Switching from {old_model_name} to {model_name}...")
+
+            # Unload old model if it was initialized
+            if old_model.is_initialized():
+                logger.info(f"Unloading {old_model_name} model to free memory...")
+                old_model.unload()
+
+                # Force garbage collection and clear GPU memory
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    memory_allocated = torch.cuda.memory_allocated() / 1024**3
+                    logger.info(f"GPU memory after cleanup: {memory_allocated:.2f} GB")
+
             self.current_model = model_name
             self.transcriber = self.models[model_name]
 
