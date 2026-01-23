@@ -87,16 +87,16 @@ C:\code\medasr\
 
 Enable in Settings → Formatting tab to use a local AI model for text post-processing:
 
-- **Model**: Qwen2-0.5B-Instruct (~0.5GB VRAM)
-- **Features**: Capitalization, punctuation, bullet lists, paragraph breaks
+- **Model**: Qwen2-1.5B-Instruct (~1.5GB VRAM)
+- **Features**: Paragraph breaks, bullet lists, proper email structure
 - **Toggle**: Enable/disable anytime, model unloads when disabled to free VRAM
 
 **Examples:**
-- "i need milk eggs and bread" → bullet list
-- "hello how are you" → "Hello, how are you?"
-- "first point second point" → paragraphed text
+- "I need milk, eggs, and bread" → bullet list
+- "Hi how are you. Thanks. Regards." → properly spaced email with line breaks
+- Lists of items → bullet points
 
-**Note:** First enable downloads the model (~400MB). Disabled by default.
+**Note:** First enable downloads the model (~1GB). Disabled by default.
 
 ## Thread Safety
 

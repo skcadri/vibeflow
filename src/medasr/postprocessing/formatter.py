@@ -7,9 +7,27 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Formatting prompt for the LLM
+# Formatting prompt for the LLM - uses few-shot examples for better results
 FORMATTING_PROMPT = """<|im_start|>system
-You format transcribed speech for typing. Fix capitalization and punctuation. Convert lists to bullet points with "- " prefix if appropriate. Add paragraph breaks if needed. Keep the meaning exactly the same. Output ONLY the formatted text, nothing else.<|im_end|>
+Add line breaks to structure the text. Separate greetings, paragraphs, and sign-offs with blank lines. Make lists into bullet points.<|im_end|>
+<|im_start|>user
+Hi, how are you? I wanted to ask about the meeting. Thanks. John.<|im_end|>
+<|im_start|>assistant
+Hi, how are you?
+
+I wanted to ask about the meeting.
+
+Thanks.
+
+John.<|im_end|>
+<|im_start|>user
+I need milk, eggs, bread, and butter from the store.<|im_end|>
+<|im_start|>assistant
+I need from the store:
+- milk
+- eggs
+- bread
+- butter<|im_end|>
 <|im_start|>user
 {text}<|im_end|>
 <|im_start|>assistant
@@ -36,8 +54,8 @@ class LocalLLMFormatter:
                 from llama_cpp import Llama
 
                 self.model = Llama.from_pretrained(
-                    repo_id="Qwen/Qwen2-0.5B-Instruct-GGUF",
-                    filename="qwen2-0_5b-instruct-q4_k_m.gguf",
+                    repo_id="Qwen/Qwen2-1.5B-Instruct-GGUF",
+                    filename="qwen2-1_5b-instruct-q4_k_m.gguf",
                     n_ctx=512,
                     n_gpu_layers=-1,  # All layers on GPU
                     verbose=False
