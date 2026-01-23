@@ -11,6 +11,7 @@ from PyQt6.QtGui import QFont
 from .styles import DARK_THEME_QSS
 from .vocabulary_tab import VocabularyTab
 from .models_tab import ModelsTab
+from .formatting_tab import FormattingTab
 from .history_tab import HistoryTab
 
 logger = logging.getLogger(__name__)
@@ -58,10 +59,12 @@ class SettingsWindow(QWidget):
         # Create tabs
         self.vocabulary_tab = VocabularyTab(self.app)
         self.models_tab = ModelsTab(self.app)
+        self.formatting_tab = FormattingTab(self.app)
         self.history_tab = HistoryTab(self.app)
 
         self.tabs.addTab(self.vocabulary_tab, "Vocabulary")
         self.tabs.addTab(self.models_tab, "Models")
+        self.tabs.addTab(self.formatting_tab, "Formatting")
         self.tabs.addTab(self.history_tab, "History")
 
         layout.addWidget(self.tabs)

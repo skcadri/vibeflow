@@ -1,24 +1,20 @@
-transcription:
-  # For faster-whisper: tiny.en, base.en, small.en, medium.en
-  # For MedASR: google/medasr (medical dictation only)
-  model: base.en
-  device: cuda  # or cpu
-
 audio:
-  sample_rate: 16000
   channels: 1
   chunk_size: 1024
-
-hotkeys:
-  toggle: ctrl+cmd  # ctrl+win on Windows
-  cancel: escape
-
-ui:
-  show_bubble: true
-  bubble_position: bottom_center  # or cursor
-  play_sounds: true
-  waveform_bars: 20
-
+  sample_rate: 16000
+formatting:
+  enabled: true
 history:
   enabled: true
   max_entries: 500
+hotkeys:
+  cancel: escape
+  toggle: ctrl+cmd
+transcription:
+  device: cuda
+  model: base.en
+ui:
+  bubble_position: bottom_center
+  play_sounds: true
+  show_bubble: true
+  waveform_bars: 20

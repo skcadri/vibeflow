@@ -77,6 +77,25 @@ class Config:
                 return default
         return value
 
+    def set(self, key: str, value):
+        """Set config value by dot-notation key (e.g., 'formatting.enabled')."""
+        keys = key.split('.')
+        current = self._data
+        for k in keys[:-1]:
+            if k not in current:
+                current[k] = {}
+            current = current[k]
+        current[keys[-1]] = value
+
+    def save(self):
+        """Save configuration to file."""
+        try:
+            with open(self.config_path, 'w') as f:
+                yaml.dump(self._data, f, default_flow_style=False)
+            logger.info(f"Saved config to: {self.config_path}")
+        except Exception as e:
+            logger.error(f"Failed to save config: {e}")
+
 
 # Global config instance
 config = Config()

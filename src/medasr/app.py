@@ -26,6 +26,7 @@ from .ui.bubble import FloatingBubble
 from .ui.tray import SystemTray
 from .history.storage import HistoryStorage
 from .vocabulary.manager import VocabularyManager
+from .postprocessing.formatter import formatter as text_formatter
 
 logger = logging.getLogger(__name__)
 
@@ -110,11 +111,18 @@ class MedASRApp:
         # Initialize history storage
         self.history_storage = HistoryStorage()
 
+        # Initialize text formatter (lazy loaded when enabled)
+        self.formatter = text_formatter
+
         # Settings window (created lazily on first open)
         self.settings_window = None
 
         # Initialize transcriber in background
         self._init_transcriber_async()
+
+        # Initialize formatter if enabled in config
+        if config.get('formatting.enabled', False):
+            self._init_formatter_async()
 
     def _init_transcriber_async(self):
         """Initialize current transcriber in background thread."""
@@ -138,6 +146,19 @@ class MedASRApp:
             except Exception as e:
                 logger.error(f"Failed to initialize transcriber: {e}")
                 logger.error("Please check that PyTorch is installed with CUDA support.")
+
+        thread = threading.Thread(target=init, daemon=True)
+        thread.start()
+
+    def _init_formatter_async(self):
+        """Initialize text formatter in background thread."""
+        def init():
+            try:
+                logger.info("Loading text formatter model...")
+                self.formatter.initialize()
+                logger.info("Text formatter ready!")
+            except Exception as e:
+                logger.error(f"Failed to initialize formatter: {e}")
 
         thread = threading.Thread(target=init, daemon=True)
         thread.start()
@@ -279,15 +300,23 @@ class MedASRApp:
             )
 
             if text:
-                # Save to history
+                # Format text if enabled
+                if config.get('formatting.enabled', False) and self.formatter.is_initialized():
+                    logger.info("Formatting text...")
+                    formatted_text = self.formatter.format_text(text)
+                    if formatted_text != text:
+                        logger.info(f"Formatted: '{text[:30]}...' -> '{formatted_text[:30]}...'")
+                        text = formatted_text
+
+                # Save to history (save formatted text)
                 self.history_storage.add(
                     text=text,
                     model=self.current_model,
                     duration=duration
                 )
 
-                # Type the text
-                logger.info(f"Typing: {text}")
+                # Paste the text at cursor
+                logger.info(f"Pasting: {text}")
                 type_text(text + " ")
             else:
                 logger.warning("Empty transcription result")

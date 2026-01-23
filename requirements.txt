@@ -4,6 +4,12 @@ sounddevice>=0.4.6
 PyQt6>=6.5.0
 pynput>=1.7.6
 pyyaml>=6.0
+pyperclip>=1.8.0
+
+# Text formatting (local LLM)
+# Install with CUDA support:
+# pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121
+llama-cpp-python>=0.2.0
 
 # MedASR dependencies
 # Install PyTorch with CUDA first:
