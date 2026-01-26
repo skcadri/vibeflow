@@ -2,10 +2,12 @@
 
 import logging
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QScrollArea, QFrame,
-    QRadioButton, QLabel, QButtonGroup
+    QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, QFrame,
+    QRadioButton, QLabel, QButtonGroup, QComboBox
 )
 from PyQt6.QtCore import pyqtSignal
+
+from ..config import config
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +76,7 @@ class ModelsTab(QWidget):
     """Tab for selecting transcription model."""
 
     model_selected = pyqtSignal(str)  # Emits model key
+    device_changed = pyqtSignal(str)  # Emits 'cuda' or 'cpu'
 
     def __init__(self, app, parent=None):
         super().__init__(parent)
@@ -94,11 +97,31 @@ class ModelsTab(QWidget):
 
         desc = QLabel(
             "Select a model based on your needs. Larger models are more accurate "
-            "but require more GPU memory and are slower."
+            "but require more memory and are slower."
         )
         desc.setObjectName("description")
         desc.setWordWrap(True)
         layout.addWidget(desc)
+
+        # Device selection
+        device_frame = QFrame()
+        device_frame.setObjectName("card")
+        device_layout = QHBoxLayout(device_frame)
+
+        device_label = QLabel("Acceleration:")
+        device_layout.addWidget(device_label)
+
+        self.device_combo = QComboBox()
+        self.device_combo.addItem("GPU (CUDA) - Faster", "cuda")
+        self.device_combo.addItem("CPU - No GPU required", "cpu")
+
+        current_device = config.get('transcription.device', 'cuda')
+        self.device_combo.setCurrentIndex(0 if current_device == 'cuda' else 1)
+        self.device_combo.currentIndexChanged.connect(self._on_device_changed)
+        device_layout.addWidget(self.device_combo)
+        device_layout.addStretch()
+
+        layout.addWidget(device_frame)
 
         # Scroll area for model cards
         scroll = QScrollArea()
@@ -149,6 +172,13 @@ class ModelsTab(QWidget):
         layout.addWidget(stats)
 
         return card
+
+    def _on_device_changed(self, index):
+        """Handle device selection change."""
+        device = self.device_combo.currentData()
+        if device:
+            logger.info(f"Device changed to: {device}")
+            self.device_changed.emit(device)
 
     def _on_model_selected(self, button):
         """Handle model selection."""

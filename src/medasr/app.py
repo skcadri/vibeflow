@@ -210,6 +210,34 @@ class MedASRApp:
             else:
                 logger.info(f"{model_name} model ready!")
 
+    def switch_device(self, device: str):
+        """Switch between CPU and CUDA for transcription."""
+        with self._lock:
+            if self.state != AppState.IDLE:
+                logger.warning("Cannot switch device while recording/processing")
+                return
+
+            current_device = config.get('transcription.device', 'cuda')
+            if device == current_device:
+                logger.info(f"Already using {device}")
+                return
+
+            logger.info(f"Switching transcription device from {current_device} to {device}...")
+
+            # Save to config
+            config.set('transcription.device', device)
+            config.save()
+
+            # Unload current model and reinitialize with new device
+            if self.transcriber.is_initialized():
+                self.transcriber.unload()
+
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+
+            self._init_transcriber_async()
+
     def _on_audio_chunk(self, chunk):
         """Handle audio chunk from capture."""
         if self.state == AppState.RECORDING and self.bubble:
@@ -348,6 +376,7 @@ class MedASRApp:
                 from .ui.settings_window import SettingsWindow
                 self.settings_window = SettingsWindow(self)
                 self.settings_window.model_changed.connect(self.switch_model)
+                self.settings_window.device_changed.connect(self.switch_device)
                 self.settings_window.vocabulary_changed.connect(self._on_vocabulary_changed)
                 logger.info("Settings window created")
             else:

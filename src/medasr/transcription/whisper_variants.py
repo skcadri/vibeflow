@@ -22,6 +22,9 @@ class WhisperBaseTranscriber:
         if self._initialized:
             return
 
+        # Recalculate compute type based on current device
+        self.compute_type = "float16" if self.device == "cuda" else "int8"
+
         logger.info(f"Loading {self.model_size} model...")
         logger.info(f"Device: {self.device}, Compute type: {self.compute_type}")
 

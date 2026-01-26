@@ -22,6 +22,7 @@ class SettingsWindow(QWidget):
 
     # Signals to communicate with main app
     model_changed = pyqtSignal(str)          # model_key
+    device_changed = pyqtSignal(str)         # 'cuda' or 'cpu'
     vocabulary_changed = pyqtSignal(list)     # list of words
 
     def __init__(self, app, parent=None):
@@ -71,6 +72,7 @@ class SettingsWindow(QWidget):
 
         # Connect signals
         self.models_tab.model_selected.connect(self.model_changed.emit)
+        self.models_tab.device_changed.connect(self.device_changed.emit)
         self.vocabulary_tab.vocabulary_updated.connect(self.vocabulary_changed.emit)
 
     def _create_header(self) -> QWidget:

@@ -4,8 +4,7 @@ import logging
 import threading
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QCheckBox, QFrame, QTextEdit,
-    QPushButton, QScrollArea
+    QLabel, QCheckBox, QFrame, QTextEdit, QPushButton
 )
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtGui import QFont

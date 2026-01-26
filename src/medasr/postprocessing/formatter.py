@@ -11,73 +11,60 @@ logger = logging.getLogger(__name__)
 
 # Default formatting prompt - strict mode (preserves original words exactly)
 DEFAULT_PROMPT_STRICT = """<|user|>
-You are a text formatter. Your ONLY job is to add line breaks and bullet points.
+You are a transcription formatter. Your job is to clean up raw speech-to-text output for readability.
 
-CRITICAL RULES:
-1. DO NOT change any words
-2. DO NOT add or remove any words
-3. DO NOT rephrase anything
-4. ONLY add line breaks between sentences when appropriate
-5. ONLY convert comma-separated lists to bullet points
-6. Keep ALL original words exactly as they are
+RULES:
+1. Preserve ALL original words exactly - do NOT change, add, or remove words
+2. Add line breaks between sentences to improve readability
+3. Add paragraph breaks where there is a topic shift
+4. Add punctuation where clearly implied by speech
+5. Capitalize sentence starts and proper nouns
+6. If the speaker dictates an email, format it like an email (greeting, body, sign-off)
+7. Only use bullet points if the speaker is clearly listing items
 
-Example 1:
-Input: Hi, how are you? I wanted to ask about the meeting. Thanks. John.
+Example:
+Input: Hi how are you I wanted to ask about the meeting tomorrow. Can we push it to 3pm. Thanks. John.
 Output:
 Hi, how are you?
 
-I wanted to ask about the meeting.
+I wanted to ask about the meeting tomorrow. Can we push it to 3pm?
 
 Thanks.
 
 John.
 
-Example 2:
-Input: I need milk, eggs, bread, and butter.
-Output:
-I need:
-- milk
-- eggs
-- bread
-- butter
-
-Now format this text (preserve ALL original words):
+Now format this text:
 {text}<|end|>
 <|assistant|>
 """
 
 # Default formatting prompt - typo fix mode (can fix obvious typos)
 DEFAULT_PROMPT_TYPOFIX = """<|user|>
-You are a text formatter. Add line breaks, bullet points, and fix obvious typos.
+You are a transcription formatter. Clean up raw speech-to-text output and fix obvious typos.
 
 RULES:
-1. Add line breaks between sentences when appropriate
-2. Convert comma-separated lists to bullet points
-3. Fix obvious spelling mistakes and typos
-4. DO NOT rephrase or change the meaning
-5. DO NOT add new words or remove words (except fixing typos)
+1. Preserve the speaker's original meaning and tone
+2. Fix obvious spelling mistakes and typos
+3. Add line breaks between sentences for readability
+4. Add paragraph breaks where there is a topic shift
+5. Add punctuation where clearly implied by speech
+6. Capitalize sentence starts and proper nouns
+7. Remove filler words (um, uh) only if meaningless
+8. Only use bullet points if the speaker is clearly listing items
+9. Do NOT rephrase or rewrite - only light edits
 
-Example 1:
-Input: Hi, how are yuo? I wantd to ask about the meetting. Thanks. John.
+Example:
+Input: Hi how are yuo I wantd to ask about the meetting tomorow. Can we push it to 3pm. Thnaks. John.
 Output:
 Hi, how are you?
 
-I wanted to ask about the meeting.
+I wanted to ask about the meeting tomorrow. Can we push it to 3pm?
 
 Thanks.
 
 John.
 
-Example 2:
-Input: I need milk, egss, bread, and buttr.
-Output:
-I need:
-- milk
-- eggs
-- bread
-- butter
-
-Now format this text (fix typos, add line breaks):
+Now format this text:
 {text}<|end|>
 <|assistant|>
 """
