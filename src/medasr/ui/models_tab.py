@@ -77,6 +77,7 @@ class ModelsTab(QWidget):
 
     model_selected = pyqtSignal(str)  # Emits model key
     device_changed = pyqtSignal(str)  # Emits 'cuda' or 'cpu'
+    input_method_changed = pyqtSignal(str)  # Emits 'paste' or 'type'
 
     def __init__(self, app, parent=None):
         super().__init__(parent)
@@ -122,6 +123,26 @@ class ModelsTab(QWidget):
         device_layout.addStretch()
 
         layout.addWidget(device_frame)
+
+        # Input method selection
+        input_frame = QFrame()
+        input_frame.setObjectName("card")
+        input_layout = QHBoxLayout(input_frame)
+
+        input_label = QLabel("Input Method:")
+        input_layout.addWidget(input_label)
+
+        self.input_combo = QComboBox()
+        self.input_combo.addItem("Paste (clipboard) - Instant", "paste")
+        self.input_combo.addItem("Type (keyboard) - Letter by letter", "type")
+
+        current_method = config.get('input.method', 'paste')
+        self.input_combo.setCurrentIndex(0 if current_method == 'paste' else 1)
+        self.input_combo.currentIndexChanged.connect(self._on_input_method_changed)
+        input_layout.addWidget(self.input_combo)
+        input_layout.addStretch()
+
+        layout.addWidget(input_frame)
 
         # Scroll area for model cards
         scroll = QScrollArea()
@@ -179,6 +200,15 @@ class ModelsTab(QWidget):
         if device:
             logger.info(f"Device changed to: {device}")
             self.device_changed.emit(device)
+
+    def _on_input_method_changed(self, index):
+        """Handle input method selection change."""
+        method = self.input_combo.currentData()
+        if method:
+            logger.info(f"Input method changed to: {method}")
+            config.set('input.method', method)
+            config.save()
+            self.input_method_changed.emit(method)
 
     def _on_model_selected(self, button):
         """Handle model selection."""

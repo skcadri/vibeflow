@@ -1,4 +1,4 @@
-"""Text input simulation using clipboard paste."""
+"""Text input simulation using clipboard paste or keyboard typing."""
 
 import logging
 import time
@@ -11,19 +11,31 @@ logger = logging.getLogger(__name__)
 _keyboard = Controller()
 
 
-def type_text(text: str):
+def type_text(text: str, method: str = 'paste'):
+    """
+    Enter text at current cursor position.
+
+    Args:
+        text: Text to enter
+        method: 'paste' for clipboard-based paste (default),
+                'type' for character-by-character keyboard typing
+    """
+    if not text:
+        return
+
+    if method == 'type':
+        _type_text_keyboard(text)
+    else:
+        _paste_text_clipboard(text)
+
+
+def _paste_text_clipboard(text: str):
     """
     Paste text at current cursor position using clipboard.
 
     Uses clipboard + Ctrl+V instead of typing character-by-character
     to avoid issues with apps like WhatsApp where Enter sends a message.
-
-    Args:
-        text: Text to paste
     """
-    if not text:
-        return
-
     try:
         logger.info(f"Pasting text: {text[:50]}{'...' if len(text) > 50 else ''}")
 
@@ -61,3 +73,16 @@ def type_text(text: str):
             _keyboard.type(text)
         except Exception as e2:
             logger.error(f"Fallback typing also failed: {e2}")
+
+
+def _type_text_keyboard(text: str):
+    """
+    Type text character-by-character using keyboard simulation.
+
+    Slower but doesn't touch the clipboard.
+    """
+    try:
+        logger.info(f"Typing text: {text[:50]}{'...' if len(text) > 50 else ''}")
+        _keyboard.type(text)
+    except Exception as e:
+        logger.error(f"Failed to type text: {e}")

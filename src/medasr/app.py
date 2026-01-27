@@ -344,9 +344,10 @@ class MedASRApp:
                     duration=duration
                 )
 
-                # Paste the text at cursor
-                logger.info(f"Pasting: {text}")
-                type_text(text + " ")
+                # Enter the text at cursor
+                input_method = config.get('input.method', 'paste')
+                logger.info(f"Entering text ({input_method}): {text}")
+                type_text(text + " ", method=input_method)
             else:
                 logger.warning("Empty transcription result")
 
