@@ -131,7 +131,7 @@ class MedASRApp:
                 if self.current_model == "medasr":
                     logger.info("Loading MedASR model...")
                     model_name = 'google/medasr'
-                    device = config.get('transcription.device', 'cuda')
+                    device = config.get('transcription.device', 'cpu')
                     self.transcriber.model_name = model_name
                     self.transcriber.device = device
                     self.transcriber.initialize()
@@ -139,7 +139,7 @@ class MedASRApp:
                 else:
                     # All Whisper variants (tiny, base, small, medium, large, turbo, distil)
                     logger.info(f"Loading {self.current_model} model (first run downloads model)...")
-                    device = config.get('transcription.device', 'cuda')
+                    device = config.get('transcription.device', 'cpu')
                     self.transcriber.device = device
                     self.transcriber.initialize()
                     logger.info(f"{self.current_model} ready! You can now use Ctrl+Win to dictate.")
@@ -217,7 +217,7 @@ class MedASRApp:
                 logger.warning("Cannot switch device while recording/processing")
                 return
 
-            current_device = config.get('transcription.device', 'cuda')
+            current_device = config.get('transcription.device', 'cpu')
             if device == current_device:
                 logger.info(f"Already using {device}")
                 return

@@ -6,6 +6,8 @@ import pystray
 from pystray import MenuItem as item
 import threading
 
+from ..config import config
+
 logger = logging.getLogger(__name__)
 
 
@@ -40,6 +42,7 @@ class SystemTray:
         self.app = app
         self.icon = None
         self.current_model = "whisper_base"  # Default
+        self.current_device = config.get('transcription.device', 'cpu')  # Load from config
         self.on_settings_open = None  # Callback for double-click
         self._thread = None  # Thread reference for cleanup
 
@@ -51,6 +54,14 @@ class SystemTray:
             self.current_model = model_key
             self._update_menu()
         return switch
+
+    def _toggle_device(self):
+        """Toggle between CPU and CUDA."""
+        new_device = "cuda" if self.current_device == "cpu" else "cpu"
+        logger.info(f"Toggling device to {new_device}...")
+        self.app.switch_device(new_device)
+        self.current_device = new_device
+        self._update_menu()
 
     def _on_settings(self):
         """Open settings window."""
@@ -73,9 +84,13 @@ class SystemTray:
 
     def _create_menu(self):
         """Create the system tray menu."""
+        device_label = "Use GPU (CUDA)" if self.current_device == "cpu" else "Use CPU"
         return pystray.Menu(
             # Settings at the top
             item('Settings...', self._on_settings),
+            pystray.Menu.SEPARATOR,
+            # Device toggle
+            item(device_label, self._toggle_device),
             pystray.Menu.SEPARATOR,
             # Whisper Models - Fast & Balanced
             item(

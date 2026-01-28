@@ -36,16 +36,19 @@ formatting:
 history:
   enabled: true
   max_entries: 500
-input:
-  method: paste
 hotkeys:
   cancel: escape
   toggle: ctrl+cmd
+input:
+  method: type
 transcription:
-  device: cuda
+  device: cpu
   model: base.en
 ui:
   bubble_position: bottom_center
   play_sounds: true
   show_bubble: true
   waveform_bars: 20
+vocabulary:
+  enabled_packs:
+  - neurology
