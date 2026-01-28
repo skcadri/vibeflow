@@ -61,6 +61,9 @@ class Config:
             'history': {
                 'enabled': True,
                 'max_entries': 500
+            },
+            'vocabulary': {
+                'enabled_packs': []
             }
         }
 

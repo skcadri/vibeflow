@@ -1,0 +1,76 @@
+ischemic stroke
+hemorrhagic stroke
+thrombolysis
+thrombectomy
+alteplase
+tenecteplase
+NIHSS
+NIH Stroke Scale
+aphasia
+dysarthria
+hemiparesis
+hemiplegia
+hemianopia
+ataxia
+nystagmus
+diplopia
+paresthesia
+fasciculation
+craniotomy
+craniectomy
+aneurysm
+subarachnoid hemorrhage
+subdural hematoma
+epidural hematoma
+intracerebral hemorrhage
+intraventricular hemorrhage
+cerebral edema
+midline shift
+hydrocephalus
+ventriculostomy
+EVD
+intracranial pressure
+cerebral perfusion pressure
+vasospasm
+nimodipine
+levetiracetam
+lacosamide
+phenytoin
+carbamazepine
+valproic acid
+lamotrigine
+electroencephalogram
+EEG
+electromyography
+EMG
+nerve conduction study
+lumbar puncture
+cerebrospinal fluid
+demyelination
+multiple sclerosis
+Guillain-Barre
+myasthenia gravis
+Parkinson disease
+Alzheimer disease
+frontotemporal dementia
+amyotrophic lateral sclerosis
+neuropathy
+radiculopathy
+myelopathy
+carotid stenosis
+vertebrobasilar
+Circle of Willis
+middle cerebral artery
+anterior cerebral artery
+posterior cerebral artery
+basilar artery
+telestroke
+ICAD
+large vessel occlusion
+penumbra
+infarct core
+perfusion imaging
+CT angiography
+MR angiography
+diffusion-weighted imaging
+FLAIR

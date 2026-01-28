@@ -1,0 +1,61 @@
+sepsis
+septic shock
+bacteremia
+pneumonia
+cellulitis
+urinary tract infection
+pyelonephritis
+osteomyelitis
+endocarditis
+meningitis
+COPD exacerbation
+asthma exacerbation
+heart failure
+acute coronary syndrome
+myocardial infarction
+pulmonary embolism
+deep vein thrombosis
+atrial fibrillation
+acute kidney injury
+chronic kidney disease
+diabetic ketoacidosis
+hyperosmolar hyperglycemic state
+gastrointestinal bleed
+pancreatitis
+cholecystitis
+diverticulitis
+small bowel obstruction
+cirrhosis
+hepatic encephalopathy
+ascites
+paracentesis
+thoracentesis
+central venous catheter
+arterial line
+intubation
+extubation
+BiPAP
+high-flow nasal cannula
+ventilator
+vasopressor
+norepinephrine
+vasopressin
+phenylephrine
+dobutamine
+milrinone
+albumin
+lactate
+procalcitonin
+blood culture
+urinalysis
+chest x-ray
+CT abdomen pelvis
+transthoracic echocardiogram
+transesophageal echocardiogram
+stress test
+cardiac catheterization
+code status
+goals of care
+palliative care
+disposition
+discharge planning
