@@ -5,20 +5,17 @@ PyQt6>=6.5.0
 pynput>=1.7.6
 pyyaml>=6.0
 pyperclip>=1.8.0
+pystray>=0.19.5
+pillow>=10.0.0
 
 # Text formatting (local LLM)
 # Install with CUDA support:
 # pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121
 llama-cpp-python>=0.2.0
 
-# MedASR dependencies
-# Install PyTorch with CUDA first:
-# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-torch>=2.0.0
-librosa>=0.10.0
 
-# Install transformers from git (requires >= 5.0.0 for MedASR)
-git+https://github.com/huggingface/transformers.git@65dc261512cbdb1ee72b88ae5b222f2605aad8e5
+# Parakeet (ONNX)
+onnx-asr[gpu,hub]>=0.10.2
 
 # Packaging (for building .exe)
 pyinstaller>=6.0.0

@@ -13,62 +13,13 @@ logger = logging.getLogger(__name__)
 
 # Model definitions with descriptions
 MODEL_INFO = {
-    'whisper_tiny': {
-        'name': 'Whisper Tiny',
-        'description': 'Fastest model, ~39M parameters. Best for quick, basic transcription.',
+    'parakeet_tdt': {
+        'name': 'Parakeet TDT 0.6B v2 (Recommended)',
+        'description': 'Very fast, highly accurate English dictation with punctuation and capitalization.',
         'speed': 'Very Fast',
-        'accuracy': 'Basic',
-        'vram': '~1 GB'
+        'accuracy': 'Very High',
+        'vram': '~2-4 GB'
     },
-    'whisper_base': {
-        'name': 'Whisper Base (Recommended)',
-        'description': 'Good balance of speed and accuracy. ~74M parameters.',
-        'speed': 'Fast',
-        'accuracy': 'Good',
-        'vram': '~1 GB'
-    },
-    'whisper_small': {
-        'name': 'Whisper Small',
-        'description': 'Better accuracy than Base. ~244M parameters.',
-        'speed': 'Medium',
-        'accuracy': 'Better',
-        'vram': '~2 GB'
-    },
-    'whisper_medium': {
-        'name': 'Whisper Medium',
-        'description': 'High accuracy for most use cases. ~769M parameters.',
-        'speed': 'Slower',
-        'accuracy': 'High',
-        'vram': '~5 GB'
-    },
-    'whisper_large': {
-        'name': 'Whisper Large-v3',
-        'description': 'Best accuracy, multilingual. ~1.5B parameters.',
-        'speed': 'Slow',
-        'accuracy': 'Best',
-        'vram': '~10 GB'
-    },
-    'whisper_turbo': {
-        'name': 'Whisper Large-v3-Turbo',
-        'description': 'Best accuracy with improved speed. Optimized Large-v3.',
-        'speed': 'Medium',
-        'accuracy': 'Best',
-        'vram': '~6 GB'
-    },
-    'distil_whisper': {
-        'name': 'Distil-Whisper Large',
-        'description': 'Speed champion with near-Large accuracy. Distilled model.',
-        'speed': 'Fast',
-        'accuracy': 'High',
-        'vram': '~4 GB'
-    },
-    'medasr': {
-        'name': 'MedASR (Medical)',
-        'description': 'Specialized for medical dictation. Best for clinical terminology.',
-        'speed': 'Medium',
-        'accuracy': 'Medical',
-        'vram': '~4 GB'
-    }
 }
 
 
@@ -153,7 +104,7 @@ class ModelsTab(QWidget):
         scroll_layout = QVBoxLayout(scroll_content)
         scroll_layout.setSpacing(12)
 
-        current_model = getattr(self.app, 'current_model', 'whisper_base')
+        current_model = getattr(self.app, 'current_model', 'parakeet_tdt')
 
         for model_key, info in MODEL_INFO.items():
             card = self._create_model_card(model_key, info, model_key == current_model)

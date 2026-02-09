@@ -7,19 +7,13 @@ import threading
 from enum import Enum, auto
 from typing import Optional
 
-import torch
-
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QObject, pyqtSignal, QEvent, QCoreApplication
 
 from .config import config
 from .audio.capture import AudioCapture
-# Import all transcriber models
-from .transcription.medasr_model import transcriber as medasr_transcriber
-from .transcription.whisper_variants import (
-    whisper_tiny, whisper_base, whisper_small, whisper_medium,
-    whisper_large_v3, whisper_large_v3_turbo, distil_whisper_large
-)
+# Import transcription model
+from .transcription.parakeet_model import transcriber as parakeet_transcriber
 from .input.hotkeys import HotkeyListener
 from .input.typer import type_text
 from .ui.bubble import FloatingBubble
@@ -74,18 +68,19 @@ class MedASRApp:
         # Event handler for custom events
         self.event_handler = MedASRAppEventHandler(self)
 
-        # Model management - all available models
+        # Model management
         self.models = {
-            'whisper_tiny': whisper_tiny,
-            'whisper_base': whisper_base,
-            'whisper_small': whisper_small,
-            'whisper_medium': whisper_medium,
-            'whisper_large': whisper_large_v3,
-            'whisper_turbo': whisper_large_v3_turbo,
-            'distil_whisper': distil_whisper_large,
-            'medasr': medasr_transcriber
+            'parakeet_tdt': parakeet_transcriber,
         }
-        self.current_model = "whisper_base"  # Default model
+        # Prefer config selection; fall back to Parakeet.
+        configured_model = config.get('transcription.model', 'parakeet_tdt')
+        if configured_model not in self.models:
+            logger.warning(f"Unknown configured model '{configured_model}', defaulting to Parakeet")
+            configured_model = 'parakeet_tdt'
+            config.set('transcription.model', configured_model)
+            config.save()
+
+        self.current_model = configured_model
         self.transcriber = self.models[self.current_model]
 
         # Components
@@ -128,24 +123,16 @@ class MedASRApp:
         """Initialize current transcriber in background thread."""
         def init():
             try:
-                if self.current_model == "medasr":
-                    logger.info("Loading MedASR model...")
-                    model_name = 'google/medasr'
-                    device = config.get('transcription.device', 'cpu')
-                    self.transcriber.model_name = model_name
-                    self.transcriber.device = device
-                    self.transcriber.initialize()
-                    logger.info("MedASR ready! You can now use Ctrl+Win to dictate.")
-                else:
-                    # All Whisper variants (tiny, base, small, medium, large, turbo, distil)
-                    logger.info(f"Loading {self.current_model} model (first run downloads model)...")
-                    device = config.get('transcription.device', 'cpu')
-                    self.transcriber.device = device
-                    self.transcriber.initialize()
-                    logger.info(f"{self.current_model} ready! You can now use Ctrl+Win to dictate.")
+                logger.info("Loading Parakeet-TDT model...")
+                model_name = config.get('transcription.parakeet_model', 'nemo-parakeet-tdt-0.6b-v2')
+                device = config.get('transcription.device', 'cpu')
+                self.transcriber.model_name = model_name
+                self.transcriber.device = device
+                self.transcriber.initialize()
+                logger.info("Parakeet-TDT ready! You can now use Ctrl+Win to dictate.")
             except Exception as e:
                 logger.error(f"Failed to initialize transcriber: {e}")
-                logger.error("Please check that PyTorch is installed with CUDA support.")
+                logger.error("If using GPU, ensure onnxruntime-gpu is installed and CUDA is available.")
 
         thread = threading.Thread(target=init, daemon=True)
         thread.start()
@@ -168,7 +155,7 @@ class MedASRApp:
         Switch between transcription models.
 
         Args:
-            model_name: Model key (e.g., 'whisper_base', 'medasr', 'whisper_turbo')
+            model_name: Model key (e.g., 'parakeet_tdt')
         """
         with self._lock:
             if self.state != AppState.IDLE:
@@ -189,6 +176,10 @@ class MedASRApp:
 
             logger.info(f"Switching from {old_model_name} to {model_name}...")
 
+            # Persist choice
+            config.set('transcription.model', model_name)
+            config.save()
+
             # Unload old model if it was initialized
             if old_model.is_initialized():
                 logger.info(f"Unloading {old_model_name} model to free memory...")
@@ -196,10 +187,6 @@ class MedASRApp:
 
                 # Force garbage collection and clear GPU memory
                 gc.collect()
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                    memory_allocated = torch.cuda.memory_allocated() / 1024**3
-                    logger.info(f"GPU memory after cleanup: {memory_allocated:.2f} GB")
 
             self.current_model = model_name
             self.transcriber = self.models[model_name]
@@ -233,8 +220,6 @@ class MedASRApp:
                 self.transcriber.unload()
 
                 gc.collect()
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
 
             self._init_transcriber_async()
 
@@ -324,7 +309,7 @@ class MedASRApp:
             text = self.transcriber.transcribe(
                 audio_data,
                 sample_rate=config.get('audio.sample_rate', 16000),
-                hotwords=hotwords
+                hotwords=hotwords,
             )
 
             if text:

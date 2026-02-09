@@ -42,8 +42,9 @@ hotkeys:
 input:
   method: type
 transcription:
-  device: cpu
-  model: base.en
+  device: cuda
+  model: parakeet_tdt
+  parakeet_model: nemo-parakeet-tdt-0.6b-v2
 ui:
   bubble_position: bottom_center
   play_sounds: true

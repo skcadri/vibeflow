@@ -40,7 +40,8 @@ class Config:
         """Default configuration values."""
         return {
             'transcription': {
-                'model': 'google/medasr',
+                'model': 'parakeet_tdt',
+                'parakeet_model': 'nemo-parakeet-tdt-0.6b-v2',
                 'device': 'cuda'
             },
             'audio': {

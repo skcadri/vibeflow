@@ -41,7 +41,7 @@ class SystemTray:
         """
         self.app = app
         self.icon = None
-        self.current_model = "whisper_base"  # Default
+        self.current_model = getattr(app, 'current_model', 'parakeet_tdt')
         self.current_device = config.get('transcription.device', 'cpu')  # Load from config
         self.on_settings_open = None  # Callback for double-click
         self._thread = None  # Thread reference for cleanup
@@ -92,50 +92,10 @@ class SystemTray:
             # Device toggle
             item(device_label, self._toggle_device),
             pystray.Menu.SEPARATOR,
-            # Whisper Models - Fast & Balanced
             item(
-                'Whisper Base (Recommended)',
-                self._create_model_switcher('whisper_base', 'Whisper Base'),
-                checked=lambda item: self.current_model == 'whisper_base'
-            ),
-            item(
-                'Whisper Medium (Better Accuracy)',
-                self._create_model_switcher('whisper_medium', 'Whisper Medium'),
-                checked=lambda item: self.current_model == 'whisper_medium'
-            ),
-            item(
-                'Whisper Small (Faster)',
-                self._create_model_switcher('whisper_small', 'Whisper Small'),
-                checked=lambda item: self.current_model == 'whisper_small'
-            ),
-            item(
-                'Whisper Tiny (Fastest)',
-                self._create_model_switcher('whisper_tiny', 'Whisper Tiny'),
-                checked=lambda item: self.current_model == 'whisper_tiny'
-            ),
-            pystray.Menu.SEPARATOR,
-            # Premium Models - Best Quality
-            item(
-                'Large-v3-Turbo (Best + Fast)',
-                self._create_model_switcher('whisper_turbo', 'Whisper Turbo'),
-                checked=lambda item: self.current_model == 'whisper_turbo'
-            ),
-            item(
-                'Distil-Whisper (Speed Champion)',
-                self._create_model_switcher('distil_whisper', 'Distil Whisper'),
-                checked=lambda item: self.current_model == 'distil_whisper'
-            ),
-            item(
-                'Large-v3 (Best Accuracy)',
-                self._create_model_switcher('whisper_large', 'Whisper Large'),
-                checked=lambda item: self.current_model == 'whisper_large'
-            ),
-            pystray.Menu.SEPARATOR,
-            # Medical Model
-            item(
-                'MedASR (Medical Only)',
-                self._create_model_switcher('medasr', 'MedASR'),
-                checked=lambda item: self.current_model == 'medasr'
+                'Parakeet TDT v2 (Recommended)',
+                self._create_model_switcher('parakeet_tdt', 'Parakeet TDT v2'),
+                checked=lambda item: self.current_model == 'parakeet_tdt'
             ),
             pystray.Menu.SEPARATOR,
             item('Quit', self._on_quit)
