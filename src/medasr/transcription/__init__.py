@@ -1,1 +1,0 @@
-"""Transcription module using MedASR."""

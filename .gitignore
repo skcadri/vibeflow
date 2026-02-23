@@ -1,29 +1,13 @@
-# Virtual environment
-venv/
-*.pyc
-__pycache__/
-
-# Environment variables (contains secrets!)
-.env
-
-# Logs
-*.log
-
-# Model cache
-models/
-
-# User data (history database, vocabulary)
-data/
-
-# PyInstaller build
 build/
-dist/
-*.spec
-
-# IDE
-.vscode/
-.idea/
-
-# OS
+models/*.bin
+models/*.mlmodelc
 .DS_Store
-Thumbs.db
+*.o
+*.a
+*.dylib
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+compile_commands.json
+.cache/
