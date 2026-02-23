@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(VibeFlow VERSION 1.0.0 LANGUAGES CXX C OBJCXX)
+project(VibeFlow VERSION 1.0.0 LANGUAGES CXX C OBJC OBJCXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -8,15 +8,35 @@ set(CMAKE_AUTOMOC ON)
 # Qt6
 find_package(Qt6 REQUIRED COMPONENTS Widgets Multimedia)
 
-# whisper.cpp (ARM NEON + Accelerate BLAS on Apple Silicon)
-# Metal disabled due to Xcode 17 / macOS Tahoe type-checking incompatibility
+# whisper.cpp (Metal GPU + ARM NEON + Accelerate BLAS on Apple Silicon)
 set(WHISPER_COREML OFF CACHE BOOL "" FORCE)
-set(WHISPER_METAL OFF CACHE BOOL "" FORCE)
+set(WHISPER_METAL ON CACHE BOOL "" FORCE)
+set(WHISPER_METAL_EMBED_LIBRARY ON CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(WHISPER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(WHISPER_BUILD_SERVER OFF CACHE BOOL "" FORCE)
 add_subdirectory(deps/whisper.cpp)
+
+# Fix: whisper.cpp's ggml-metal.m must compile as Objective-C (not plain C).
+# Xcode 17 C compiler rejects implicit void* → id<MTLBuffer> conversions
+# that are valid in ObjC. Force the language.
+set_source_files_properties(
+    ${CMAKE_SOURCE_DIR}/deps/whisper.cpp/ggml-metal.m
+    PROPERTIES LANGUAGE OBJC
+)
+# Suppress narrowing warnings in Metal backend (int64 → int32 for GPU dispatch params)
+if(TARGET whisper)
+    get_target_property(_whisper_sources whisper SOURCES)
+    foreach(_src ${_whisper_sources})
+        if(_src MATCHES "ggml-metal\\.m$")
+            set_source_files_properties(${_src} PROPERTIES
+                LANGUAGE OBJC
+                COMPILE_FLAGS "-Wno-shorten-64-to-32"
+            )
+        endif()
+    endforeach()
+endif()
 
 # qt-liquid-glass
 add_subdirectory(deps/qt-liquid-glass)

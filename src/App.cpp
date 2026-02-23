@@ -58,14 +58,29 @@ void App::initialize()
 
 void App::loadModelAsync()
 {
-    // Look for model in ~/vibeflow/models/
-    QString modelPath = QDir::homePath() + "/vibeflow/models/ggml-large-v3.bin";
+    // Search for model in multiple locations
+    QStringList searchPaths = {
+        QApplication::applicationDirPath() + "/../Resources/ggml-large-v3.bin",  // Inside .app bundle
+        QDir::homePath() + "/vibeflow/models/ggml-large-v3.bin",                 // Dev location
+        QDir::homePath() + "/.vibeflow/models/ggml-large-v3.bin",               // User config dir
+    };
 
-    if (!QFile::exists(modelPath)) {
-        qWarning() << "Model not found at" << modelPath;
-        m_trayIcon->showMessage("VibeFlow", "Model not found. Run scripts/download-model.sh first.");
+    QString modelPath;
+    for (const auto &path : searchPaths) {
+        if (QFile::exists(path)) {
+            modelPath = path;
+            break;
+        }
+    }
+
+    if (modelPath.isEmpty()) {
+        qWarning() << "Model not found in any search path";
+        m_trayIcon->showMessage("VibeFlow",
+            "Model not found. Place ggml-large-v3.bin in ~/vibeflow/models/");
         return;
     }
+
+    qInfo() << "Using model:" << modelPath;
 
     m_trayIcon->showMessage("VibeFlow", "Loading model...");
 
