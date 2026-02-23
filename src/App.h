@@ -41,4 +41,5 @@ private:
     GlassBubble *m_bubble = nullptr;
     TrayIcon *m_trayIcon = nullptr;
     bool m_modelReady = false;
+    qint64 m_pasteTargetPid = 0;
 };

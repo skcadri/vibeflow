@@ -17,6 +17,7 @@ public:
     explicit AudioBuffer(QObject *parent = nullptr);
 
     void clear();
+    void append(const char *data, qint64 len);
     QByteArray buffer() const { return m_data; }
     qint64 size() const override { return m_data.size(); }
 
@@ -52,6 +53,7 @@ private:
     void computeRms(const char *data, qint64 len);
 
     QAudioSource *m_source = nullptr;
+    QIODevice *m_inputDevice = nullptr;
     AudioBuffer *m_audioBuffer = nullptr;
     QTimer *m_levelTimer = nullptr;
     QAudioFormat m_captureFormat;

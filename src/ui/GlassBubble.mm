@@ -17,9 +17,13 @@ GlassBubble::GlassBubble(QWidget *parent)
 {
     // Window flags: frameless, always on top, tool window (no dock icon), no focus stealing
     setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint
-                   | Qt::Tool | Qt::WindowDoesNotAcceptFocus);
+                   | Qt::Tool | Qt::WindowDoesNotAcceptFocus
+                   | Qt::WindowTransparentForInput);
     setAttribute(Qt::WA_TranslucentBackground);
     setAttribute(Qt::WA_ShowWithoutActivating);
+    setAttribute(Qt::WA_MacAlwaysShowToolWindow);
+    setAttribute(Qt::WA_TransparentForMouseEvents);
+    setFocusPolicy(Qt::NoFocus);
 
     setFixedSize(300, 56);
 
@@ -96,6 +100,8 @@ void GlassBubble::setState(State state)
             NSView *nsView = (__bridge NSView *)reinterpret_cast<void *>(windowHandle()->winId());
             if (nsView && nsView.window) {
                 [nsView.window setLevel:NSScreenSaverWindowLevel];
+                [nsView.window setIgnoresMouseEvents:YES];
+                [nsView.window orderFrontRegardless];
                 [nsView.window setCollectionBehavior:
                     NSWindowCollectionBehaviorCanJoinAllSpaces |
                     NSWindowCollectionBehaviorStationary |

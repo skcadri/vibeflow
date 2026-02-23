@@ -26,10 +26,28 @@ done
 
 # Re-sign everything (macdeployqt + install_name_tool invalidate signatures)
 echo "Code signing..."
+
+# Prefer a stable signing identity so macOS TCC (microphone permission)
+# can persist across rebuilds. Fall back to ad-hoc only if needed.
+SIGN_IDENTITY="${CODESIGN_IDENTITY:-}"
+if [ -z "$SIGN_IDENTITY" ]; then
+    if security find-identity -v -p codesigning | grep -q '"VibeFlow Dev"'; then
+        SIGN_IDENTITY="VibeFlow Dev"
+    else
+        SIGN_IDENTITY="-"
+    fi
+fi
+
+echo "Signing identity: $SIGN_IDENTITY"
+if [ "$SIGN_IDENTITY" = "-" ]; then
+    echo "WARNING: using ad-hoc signing. macOS may not persist microphone permission across rebuilds."
+    echo "Set CODESIGN_IDENTITY to a stable certificate (for example: CODESIGN_IDENTITY=\"VibeFlow Dev\")."
+fi
+
 cd build/VibeFlow.app
-find . \( -name "*.dylib" -o -name "*.framework" \) -exec codesign --force --sign - {} \; 2>/dev/null
-codesign --force --sign - Contents/MacOS/VibeFlow
-codesign --force --deep --sign - .
+find . \( -name "*.dylib" -o -name "*.framework" \) -exec codesign --force --sign "$SIGN_IDENTITY" {} \; 2>/dev/null
+codesign --force --sign "$SIGN_IDENTITY" Contents/MacOS/VibeFlow
+codesign --force --deep --sign "$SIGN_IDENTITY" .
 cd ../..
 
 # Copy model into app bundle Resources if present
@@ -39,7 +57,7 @@ if [ -f "$MODEL_SRC" ] && [ ! -f "$MODEL_DST" ]; then
     echo "Copying model into app bundle (~3GB)..."
     cp "$MODEL_SRC" "$MODEL_DST"
     # Re-sign after adding model
-    codesign --force --deep --sign - build/VibeFlow.app
+    codesign --force --deep --sign "$SIGN_IDENTITY" build/VibeFlow.app
 fi
 
 echo ""

@@ -7,10 +7,12 @@
 #include "ui/TrayIcon.h"
 
 #include <QApplication>
+#include <QCoreApplication>
 #include <QDir>
 #include <QStandardPaths>
 #include <QTimer>
 #include <cstdio>
+#include <cmath>
 
 App::App(QObject *parent)
     : QObject(parent)
@@ -118,6 +120,14 @@ void App::onHotkeyActivated()
         return;
     }
 
+    m_pasteTargetPid = TextPaster::frontmostAppPid();
+    if (m_pasteTargetPid == static_cast<qint64>(QCoreApplication::applicationPid())) {
+        m_pasteTargetPid = 0;
+    }
+    fprintf(stderr, "[INFO] App: captured frontmost app pid for paste target: %lld\n",
+            (long long)m_pasteTargetPid);
+    fflush(stderr);
+
     setState(Recording);
     m_audioCapture->start();
     m_bubble->setState(GlassBubble::Recording);
@@ -160,10 +170,19 @@ void App::onTranscriptionFinished(const QString &text)
     setState(Idle);
 
     if (!text.isEmpty()) {
+        QString textToPaste = text;
+        if (!textToPaste.at(textToPaste.size() - 1).isSpace()) {
+            textToPaste.append(' ');
+        }
         fprintf(stderr, "[INFO] App: pasting text at cursor\n");
         fflush(stderr);
-        TextPaster::paste(text);
+        if (!TextPaster::pasteToPid(textToPaste, m_pasteTargetPid) && m_trayIcon) {
+            m_trayIcon->showMessage("VibeFlow",
+                "Transcribed text copied to clipboard. Enable Accessibility for VibeFlow to auto-paste.");
+        }
     }
+
+    m_pasteTargetPid = 0;
 }
 
 void App::setState(State state)
@@ -183,6 +202,33 @@ void App::transcribeAsync()
     if (audio.isEmpty()) {
         fprintf(stderr, "[WARN] App: no audio captured, skipping transcription\n");
         fflush(stderr);
+        if (m_trayIcon) {
+            m_trayIcon->showMessage("VibeFlow",
+                "No microphone data captured. Check Privacy & Security > Microphone for VibeFlow.");
+        }
+        onTranscriptionFinished(QString());
+        return;
+    }
+
+    float peak = 0.0f;
+    double sumSquares = 0.0;
+    for (float sample : audio) {
+        float absSample = std::fabs(sample);
+        if (absSample > peak) peak = absSample;
+        sumSquares += static_cast<double>(sample) * static_cast<double>(sample);
+    }
+    const float rms = static_cast<float>(std::sqrt(sumSquares / audio.size()));
+    fprintf(stderr, "[INFO] App: audio stats peak=%.6f rms=%.6f\n", peak, rms);
+    fflush(stderr);
+
+    // On macOS permission/signing failures, capture can look "active" but produce near-silent data.
+    if (audio.size() >= 8000 && peak < 0.003f && rms < 0.0008f) {
+        fprintf(stderr, "[WARN] App: near-silent capture detected, skipping transcription\n");
+        fflush(stderr);
+        if (m_trayIcon) {
+            m_trayIcon->showMessage("VibeFlow",
+                "Microphone signal is near-silent. Re-enable microphone permission and use stable app signing.");
+        }
         onTranscriptionFinished(QString());
         return;
     }

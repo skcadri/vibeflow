@@ -29,8 +29,8 @@ void WaveformWidget::updateLevel(float rmsLevel)
 
     m_level = rmsLevel;
 
-    // Distribute level across bars with some randomness for visual interest
-    float normalizedLevel = qBound(0.0f, rmsLevel * 8.0f, 1.0f); // Scale up RMS
+    // Compress the dynamic range so very quiet microphones still animate visibly.
+    float normalizedLevel = qBound(0.0f, std::sqrt(qMax(0.0f, rmsLevel)) * 6.0f, 1.0f);
 
     for (int i = 0; i < BAR_COUNT; i++) {
         // Create a wave-like distribution centered in the middle

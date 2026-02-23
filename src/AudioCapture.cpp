@@ -21,6 +21,13 @@ void AudioBuffer::clear()
     m_data.clear();
 }
 
+void AudioBuffer::append(const char *data, qint64 len)
+{
+    if (!data || len <= 0) return;
+    m_data.append(data, len);
+    emit dataWritten(len);
+}
+
 qint64 AudioBuffer::readData(char *, qint64)
 {
     return 0; // Write-only device
@@ -28,8 +35,7 @@ qint64 AudioBuffer::readData(char *, qint64)
 
 qint64 AudioBuffer::writeData(const char *data, qint64 len)
 {
-    m_data.append(data, len);
-    emit dataWritten(len);
+    append(data, len);
     return len;
 }
 
@@ -72,50 +78,35 @@ void AudioCapture::start()
             defaultDevice.minimumChannelCount(), defaultDevice.maximumChannelCount());
     fflush(stderr);
 
-    // Try our preferred format first: 16kHz mono Int16 (what whisper.cpp expects)
-    QAudioFormat format;
-    format.setSampleRate(16000);
-    format.setChannelCount(1);
-    format.setSampleFormat(QAudioFormat::Int16);
-
+    // Prefer native device format on macOS; forcing converted formats can produce no data.
+    QAudioFormat format = defaultDevice.preferredFormat();
     if (!defaultDevice.isFormatSupported(format)) {
-        fprintf(stderr, "[INFO] AudioCapture: 16kHz mono not supported, trying device preferred format\n");
-        fflush(stderr);
-
-        // Use the device's preferred format and we'll resample later
-        format = defaultDevice.preferredFormat();
-        fprintf(stderr, "[INFO] AudioCapture: using format: %dHz, %dch, sample=%d\n",
-                format.sampleRate(), format.channelCount(), (int)format.sampleFormat());
-        fflush(stderr);
-
-        // If preferred format isn't Int16, try Int16 at the preferred rate/channels
-        if (format.sampleFormat() != QAudioFormat::Int16) {
-            QAudioFormat tryFormat;
-            tryFormat.setSampleRate(format.sampleRate());
-            tryFormat.setChannelCount(format.channelCount());
-            tryFormat.setSampleFormat(QAudioFormat::Int16);
-            if (defaultDevice.isFormatSupported(tryFormat)) {
-                format = tryFormat;
-                fprintf(stderr, "[INFO] AudioCapture: switched to Int16 at %dHz %dch\n",
-                        format.sampleRate(), format.channelCount());
-                fflush(stderr);
-            }
+        fprintf(stderr, "[WARN] AudioCapture: device preferred format reported unsupported, trying 44.1kHz mono Int16 fallback\n");
+        QAudioFormat fallback;
+        fallback.setSampleRate(44100);
+        fallback.setChannelCount(1);
+        fallback.setSampleFormat(QAudioFormat::Int16);
+        if (defaultDevice.isFormatSupported(fallback)) {
+            format = fallback;
         }
-    } else {
-        fprintf(stderr, "[INFO] AudioCapture: 16kHz mono Int16 supported natively\n");
-        fflush(stderr);
     }
+    fprintf(stderr, "[INFO] AudioCapture: using capture format: %dHz, %dch, sample=%d\n",
+            format.sampleRate(), format.channelCount(), (int)format.sampleFormat());
+    fflush(stderr);
 
     m_captureFormat = format;
 
     m_source = new QAudioSource(defaultDevice, format, this);
     m_source->setBufferSize(format.sampleRate() * format.channelCount() * 2); // 1 second
 
-    // Pull mode: QAudioSource writes audio data directly into our AudioBuffer
-    m_source->start(m_audioBuffer);
+    // True pull mode: start() returns a QIODevice we read from on our timer tick.
+    m_inputDevice = m_source->start();
 
     fprintf(stderr, "[INFO] AudioCapture: started (pull mode), state=%d error=%d\n",
             (int)m_source->state(), (int)m_source->error());
+    if (!m_inputDevice) {
+        fprintf(stderr, "[ERROR] AudioCapture: start() returned null input device\n");
+    }
     fflush(stderr);
 
     // Track incoming data for RMS visualization
@@ -137,6 +128,7 @@ void AudioCapture::stop()
 
     if (m_source) {
         m_source->stop();
+        m_inputDevice = nullptr;
         disconnect(m_audioBuffer, nullptr, this, nullptr);
         delete m_source;
         m_source = nullptr;
@@ -155,7 +147,15 @@ void AudioCapture::computeRms(const char *data, qint64 len)
     int sampleCount = 0;
     double sum = 0.0;
 
-    if (m_captureFormat.sampleFormat() == QAudioFormat::Int16) {
+    if (m_captureFormat.sampleFormat() == QAudioFormat::UInt8) {
+        const uint8_t *samples = reinterpret_cast<const uint8_t *>(data);
+        sampleCount = static_cast<int>(len / sizeof(uint8_t));
+        for (int i = 0; i < sampleCount; i++) {
+            // Unsigned 8-bit PCM is centered around 128.
+            double s = (static_cast<int>(samples[i]) - 128) / 128.0;
+            sum += s * s;
+        }
+    } else if (m_captureFormat.sampleFormat() == QAudioFormat::Int16) {
         const int16_t *samples = reinterpret_cast<const int16_t *>(data);
         sampleCount = static_cast<int>(len / sizeof(int16_t));
         for (int i = 0; i < sampleCount; i++) {
@@ -185,6 +185,14 @@ void AudioCapture::computeRms(const char *data, qint64 len)
 
 void AudioCapture::onTimerTick()
 {
+    // Drain audio from pull-mode device.
+    if (m_inputDevice) {
+        QByteArray chunk = m_inputDevice->readAll();
+        if (!chunk.isEmpty()) {
+            m_audioBuffer->append(chunk.constData(), chunk.size());
+        }
+    }
+
     static int tickCount = 0;
     tickCount++;
     if (tickCount <= 10) {
@@ -235,59 +243,90 @@ QVector<float> AudioCapture::getRecordedAudio() const
     // Step 1: Convert to mono float32
     QVector<float> monoFloat(totalFrames);
 
-    if (m_captureFormat.sampleFormat() == QAudioFormat::Int16) {
-        const int16_t *samples = reinterpret_cast<const int16_t *>(raw.constData());
-        for (int i = 0; i < totalFrames; i++) {
-            float sum = 0.0f;
-            for (int ch = 0; ch < channels; ch++) {
-                sum += samples[i * channels + ch] / 32768.0f;
-            }
-            monoFloat[i] = sum / channels;
+    auto sampleAt = [&](int frame, int ch) -> float {
+        const int idx = frame * channels + ch;
+        switch (m_captureFormat.sampleFormat()) {
+        case QAudioFormat::UInt8: {
+            const uint8_t *samples = reinterpret_cast<const uint8_t *>(raw.constData());
+            return (static_cast<int>(samples[idx]) - 128) / 128.0f;
         }
-    } else if (m_captureFormat.sampleFormat() == QAudioFormat::Int32) {
-        const int32_t *samples = reinterpret_cast<const int32_t *>(raw.constData());
-        for (int i = 0; i < totalFrames; i++) {
-            float sum = 0.0f;
-            for (int ch = 0; ch < channels; ch++) {
-                sum += samples[i * channels + ch] / 2147483648.0f;
-            }
-            monoFloat[i] = sum / channels;
+        case QAudioFormat::Int16: {
+            const int16_t *samples = reinterpret_cast<const int16_t *>(raw.constData());
+            return samples[idx] / 32768.0f;
         }
-    } else if (m_captureFormat.sampleFormat() == QAudioFormat::Float) {
-        const float *samples = reinterpret_cast<const float *>(raw.constData());
-        for (int i = 0; i < totalFrames; i++) {
-            float sum = 0.0f;
-            for (int ch = 0; ch < channels; ch++) {
-                sum += samples[i * channels + ch];
-            }
-            monoFloat[i] = sum / channels;
+        case QAudioFormat::Int32: {
+            const int32_t *samples = reinterpret_cast<const int32_t *>(raw.constData());
+            return samples[idx] / 2147483648.0f;
         }
+        case QAudioFormat::Float: {
+            const float *samples = reinterpret_cast<const float *>(raw.constData());
+            return samples[idx];
+        }
+        default:
+            return 0.0f;
+        }
+    };
+
+    // Use the loudest channel per frame instead of averaging channels.
+    // This avoids phase-cancellation and helps with very low-level stereo sources.
+    for (int i = 0; i < totalFrames; i++) {
+        float selected = 0.0f;
+        float selectedAbs = -1.0f;
+        for (int ch = 0; ch < channels; ch++) {
+            const float v = sampleAt(i, ch);
+            const float av = std::fabs(v);
+            if (av > selectedAbs) {
+                selectedAbs = av;
+                selected = v;
+            }
+        }
+        monoFloat[i] = selected;
     }
 
     // Step 2: Resample to 16kHz if needed (simple linear interpolation)
+    QVector<float> output;
     if (captureRate == 16000) {
-        return monoFloat;
-    }
+        output = monoFloat;
+    } else {
+        double ratio = (double)captureRate / 16000.0;
+        int outputFrames = (int)(totalFrames / ratio);
+        output.resize(outputFrames);
 
-    double ratio = (double)captureRate / 16000.0;
-    int outputFrames = (int)(totalFrames / ratio);
-    QVector<float> resampled(outputFrames);
+        for (int i = 0; i < outputFrames; i++) {
+            double srcPos = i * ratio;
+            int srcIdx = (int)srcPos;
+            float frac = (float)(srcPos - srcIdx);
 
-    for (int i = 0; i < outputFrames; i++) {
-        double srcPos = i * ratio;
-        int srcIdx = (int)srcPos;
-        float frac = (float)(srcPos - srcIdx);
-
-        if (srcIdx + 1 < totalFrames) {
-            resampled[i] = monoFloat[srcIdx] * (1.0f - frac) + monoFloat[srcIdx + 1] * frac;
-        } else if (srcIdx < totalFrames) {
-            resampled[i] = monoFloat[srcIdx];
+            if (srcIdx + 1 < totalFrames) {
+                output[i] = monoFloat[srcIdx] * (1.0f - frac) + monoFloat[srcIdx + 1] * frac;
+            } else if (srcIdx < totalFrames) {
+                output[i] = monoFloat[srcIdx];
+            }
         }
+
+        fprintf(stderr, "[INFO] AudioCapture: resampled %d -> %d frames (16kHz)\n",
+                totalFrames, outputFrames);
+        fflush(stderr);
     }
 
-    fprintf(stderr, "[INFO] AudioCapture: resampled %d -> %d frames (16kHz)\n",
-            totalFrames, outputFrames);
-    fflush(stderr);
+    // Step 3: Automatic gain for very quiet sources (e.g. low-gain external USB mics).
+    float peak = 0.0f;
+    for (float s : output) {
+        peak = qMax(peak, std::fabs(s));
+    }
 
-    return resampled;
+    if (peak > 0.0f && peak < 0.20f) {
+        const float gain = qMin(20.0f, 0.20f / peak);
+        for (float &s : output) {
+            s = qBound(-1.0f, s * gain, 1.0f);
+        }
+        fprintf(stderr, "[INFO] AudioCapture: boosted quiet input (peak=%.6f, gain=%.2fx)\n",
+                peak, gain);
+        fflush(stderr);
+    } else {
+        fprintf(stderr, "[INFO] AudioCapture: input peak=%.6f (no gain boost)\n", peak);
+        fflush(stderr);
+    }
+
+    return output;
 }
