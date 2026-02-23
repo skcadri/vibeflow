@@ -1,8 +1,8 @@
 #include "HotkeyMonitor.h"
 
-#include <QThread>
 #include <QDebug>
 #include <ApplicationServices/ApplicationServices.h>
+#include <cstdio>
 
 HotkeyMonitor::HotkeyMonitor(QObject *parent)
     : QObject(parent)
@@ -22,18 +22,38 @@ bool HotkeyMonitor::start()
     if (!AXIsProcessTrusted()) {
         qWarning() << "HotkeyMonitor: Accessibility permission not granted";
 
-        // Prompt the user
         NSDictionary *options = @{(__bridge NSString *)kAXTrustedCheckOptionPrompt: @YES};
         AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options);
         return false;
     }
 
+    CGEventMask mask = CGEventMaskBit(kCGEventFlagsChanged) | CGEventMaskBit(kCGEventKeyDown);
+
+    m_tap = CGEventTapCreate(
+        kCGSessionEventTap,
+        kCGHeadInsertEventTap,
+        kCGEventTapOptionListenOnly,  // Passive listener — doesn't need to intercept
+        mask,
+        eventCallback,
+        this
+    );
+
+    if (!m_tap) {
+        fprintf(stderr, "[ERROR] HotkeyMonitor: failed to create event tap! Check Accessibility permissions.\n");
+        fflush(stderr);
+        return false;
+    }
+
+    // Add to the MAIN run loop — this is critical.
+    // CGEventTap callbacks must run on a run loop that receives system events.
+    m_runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, m_tap, 0);
+    CFRunLoopAddSource(CFRunLoopGetMain(), m_runLoopSource, kCFRunLoopCommonModes);
+    CGEventTapEnable(m_tap, true);
+
     m_running = true;
 
-    m_thread = QThread::create([this]() {
-        runLoop();
-    });
-    m_thread->start();
+    fprintf(stderr, "[INFO] HotkeyMonitor: event tap installed on main run loop\n");
+    fflush(stderr);
 
     qInfo() << "HotkeyMonitor: started";
     return true;
@@ -41,31 +61,21 @@ bool HotkeyMonitor::start()
 
 void HotkeyMonitor::stop()
 {
+    if (!m_running) return;
     m_running = false;
 
-    if (m_runLoop) {
-        CFRunLoopStop(m_runLoop);
-    }
-
-    if (m_thread) {
-        m_thread->quit();
-        m_thread->wait(2000);
-        delete m_thread;
-        m_thread = nullptr;
-    }
-
-    if (m_tap) {
-        CFMachPortInvalidate(m_tap);
-        CFRelease(m_tap);
-        m_tap = nullptr;
-    }
-
     if (m_runLoopSource) {
+        CFRunLoopRemoveSource(CFRunLoopGetMain(), m_runLoopSource, kCFRunLoopCommonModes);
         CFRelease(m_runLoopSource);
         m_runLoopSource = nullptr;
     }
 
-    m_runLoop = nullptr;
+    if (m_tap) {
+        CGEventTapEnable(m_tap, false);
+        CFMachPortInvalidate(m_tap);
+        CFRelease(m_tap);
+        m_tap = nullptr;
+    }
 }
 
 CGEventRef HotkeyMonitor::eventCallback(CGEventTapProxy proxy, CGEventType type,
@@ -75,8 +85,10 @@ CGEventRef HotkeyMonitor::eventCallback(CGEventTapProxy proxy, CGEventType type,
 
     auto *self = static_cast<HotkeyMonitor *>(userInfo);
 
-    // Re-enable tap if it gets disabled
+    // Re-enable tap if it gets disabled by the system
     if (type == kCGEventTapDisabledByTimeout || type == kCGEventTapDisabledByUserInput) {
+        fprintf(stderr, "[WARN] HotkeyMonitor: event tap disabled by system, re-enabling\n");
+        fflush(stderr);
         if (self->m_tap) {
             CGEventTapEnable(self->m_tap, true);
         }
@@ -92,10 +104,16 @@ CGEventRef HotkeyMonitor::eventCallback(CGEventTapProxy proxy, CGEventType type,
 
         if (bothHeld && !self->m_active) {
             self->m_active = true;
-            QMetaObject::invokeMethod(self, "activated", Qt::QueuedConnection);
+            fprintf(stderr, "[INFO] HotkeyMonitor: ACTIVATED (flags=0x%llx)\n",
+                    (unsigned long long)flags);
+            fflush(stderr);
+            emit self->activated();
         } else if (!bothHeld && self->m_active) {
             self->m_active = false;
-            QMetaObject::invokeMethod(self, "deactivated", Qt::QueuedConnection);
+            fprintf(stderr, "[INFO] HotkeyMonitor: DEACTIVATED (flags=0x%llx)\n",
+                    (unsigned long long)flags);
+            fflush(stderr);
+            emit self->deactivated();
         }
     }
 
@@ -103,37 +121,11 @@ CGEventRef HotkeyMonitor::eventCallback(CGEventTapProxy proxy, CGEventType type,
         CGKeyCode keycode = (CGKeyCode)CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode);
         if (keycode == 53) { // Escape
             self->m_active = false;
-            QMetaObject::invokeMethod(self, "cancelled", Qt::QueuedConnection);
-            return nullptr; // Consume the escape key
+            fprintf(stderr, "[INFO] HotkeyMonitor: CANCELLED (Escape)\n");
+            fflush(stderr);
+            emit self->cancelled();
         }
     }
 
     return event;
-}
-
-void HotkeyMonitor::runLoop()
-{
-    CGEventMask mask = CGEventMaskBit(kCGEventFlagsChanged) | CGEventMaskBit(kCGEventKeyDown);
-
-    m_tap = CGEventTapCreate(
-        kCGSessionEventTap,
-        kCGHeadInsertEventTap,
-        kCGEventTapOptionDefault,
-        mask,
-        eventCallback,
-        this
-    );
-
-    if (!m_tap) {
-        qWarning() << "HotkeyMonitor: failed to create event tap";
-        return;
-    }
-
-    m_runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, m_tap, 0);
-    m_runLoop = CFRunLoopGetCurrent();
-
-    CFRunLoopAddSource(m_runLoop, m_runLoopSource, kCFRunLoopCommonModes);
-    CGEventTapEnable(m_tap, true);
-
-    CFRunLoopRun();
 }
