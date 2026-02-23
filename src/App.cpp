@@ -24,35 +24,32 @@ App::~App()
 
 void App::initialize()
 {
-    // Create components
+    qInfo() << "Creating components...";
+
     m_transcriber = new Transcriber(this);
     m_audioCapture = new AudioCapture(this);
     m_hotkeyMonitor = new HotkeyMonitor(this);
     m_bubble = new GlassBubble();
     m_trayIcon = new TrayIcon(this);
 
-    // Connect hotkey signals
+    qInfo() << "Connecting signals...";
+
     connect(m_hotkeyMonitor, &HotkeyMonitor::activated, this, &App::onHotkeyActivated);
     connect(m_hotkeyMonitor, &HotkeyMonitor::deactivated, this, &App::onHotkeyDeactivated);
     connect(m_hotkeyMonitor, &HotkeyMonitor::cancelled, this, &App::onHotkeyCancelled);
-
-    // Connect audio level to bubble waveform
     connect(m_audioCapture, &AudioCapture::levelChanged, m_bubble, &GlassBubble::updateLevel);
-
-    // Connect transcriber
     connect(m_transcriber, &Transcriber::modelLoaded, this, &App::onModelLoaded);
     connect(m_transcriber, &Transcriber::modelLoadFailed, this, &App::onModelLoadFailed);
 
-    // Start hotkey monitor
+    qInfo() << "Starting hotkey monitor...";
     if (!m_hotkeyMonitor->start()) {
         qWarning() << "Failed to start hotkey monitor — grant Accessibility permission";
         m_trayIcon->showMessage("VibeFlow", "Please grant Accessibility permission in System Settings");
     }
 
-    // Show tray icon
     m_trayIcon->show();
+    qInfo() << "Tray icon shown, loading model...";
 
-    // Load model in background
     loadModelAsync();
 }
 
