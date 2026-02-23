@@ -8,6 +8,9 @@
 #include <QApplication>
 #include <QPainter>
 #include <QPainterPath>
+#include <QWindow>
+
+#import <AppKit/AppKit.h>
 
 GlassBubble::GlassBubble(QWidget *parent)
     : QWidget(parent)
@@ -87,6 +90,18 @@ void GlassBubble::setState(State state)
         m_waveform->reset();
         positionBottomCenter();
         show();
+        raise();
+        // Set NSWindow level above everything (including other always-on-top windows)
+        if (windowHandle()) {
+            NSView *nsView = (__bridge NSView *)reinterpret_cast<void *>(windowHandle()->winId());
+            if (nsView && nsView.window) {
+                [nsView.window setLevel:NSScreenSaverWindowLevel];
+                [nsView.window setCollectionBehavior:
+                    NSWindowCollectionBehaviorCanJoinAllSpaces |
+                    NSWindowCollectionBehaviorStationary |
+                    NSWindowCollectionBehaviorFullScreenAuxiliary];
+            }
+        }
         fadeIn();
         break;
 
@@ -116,9 +131,10 @@ void GlassBubble::positionBottomCenter()
     QScreen *screen = QApplication::primaryScreen();
     if (!screen) return;
 
-    QRect geo = screen->geometry();
-    int x = geo.x() + (geo.width() - width()) / 2;
-    int y = geo.y() + geo.height() - height() - 48;
+    // Use availableGeometry to position above the Dock
+    QRect avail = screen->availableGeometry();
+    int x = avail.x() + (avail.width() - width()) / 2;
+    int y = avail.y() + avail.height() - height() - 16; // 16px above Dock
     move(x, y);
 }
 
@@ -135,6 +151,7 @@ void GlassBubble::fadeIn()
 void GlassBubble::fadeOut()
 {
     m_fadeAnim->stop();
+    m_fadeAnim->disconnect(); // Clean up previous connections
     m_fadeAnim->setDuration(150);
     m_fadeAnim->setStartValue(m_opacity);
     m_fadeAnim->setEndValue(0.0);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QTimer>
 #include <CoreGraphics/CoreGraphics.h>
 
 class HotkeyMonitor : public QObject
@@ -18,12 +19,12 @@ signals:
     void deactivated();
     void cancelled();
 
-private:
-    static CGEventRef eventCallback(CGEventTapProxy proxy, CGEventType type,
-                                     CGEventRef event, void *userInfo);
+private slots:
+    void pollModifiers();
 
-    CFMachPortRef m_tap = nullptr;
-    CFRunLoopSourceRef m_runLoopSource = nullptr;
+private:
+    QTimer *m_pollTimer = nullptr;
     bool m_active = false;
     bool m_running = false;
+    bool m_escapeWasDown = false;
 };

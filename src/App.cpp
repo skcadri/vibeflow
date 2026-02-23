@@ -10,6 +10,7 @@
 #include <QDir>
 #include <QStandardPaths>
 #include <QTimer>
+#include <cstdio>
 
 App::App(QObject *parent)
     : QObject(parent)
@@ -103,12 +104,19 @@ void App::onModelLoadFailed(const QString &error)
 
 void App::onHotkeyActivated()
 {
+    fprintf(stderr, "[INFO] App: onHotkeyActivated (state=%d, modelReady=%d)\n", (int)m_state, m_modelReady);
+    fflush(stderr);
+
     if (!m_modelReady) {
-        qWarning() << "Model not loaded yet";
+        fprintf(stderr, "[WARN] App: model not loaded yet, ignoring\n");
+        fflush(stderr);
         return;
     }
-    if (m_state != Idle)
+    if (m_state != Idle) {
+        fprintf(stderr, "[WARN] App: not idle (state=%d), ignoring\n", (int)m_state);
+        fflush(stderr);
         return;
+    }
 
     setState(Recording);
     m_audioCapture->start();
@@ -117,8 +125,14 @@ void App::onHotkeyActivated()
 
 void App::onHotkeyDeactivated()
 {
-    if (m_state != Recording)
+    fprintf(stderr, "[INFO] App: onHotkeyDeactivated (state=%d)\n", (int)m_state);
+    fflush(stderr);
+
+    if (m_state != Recording) {
+        fprintf(stderr, "[WARN] App: not recording (state=%d), ignoring\n", (int)m_state);
+        fflush(stderr);
         return;
+    }
 
     m_audioCapture->stop();
     setState(Processing);
@@ -138,22 +152,40 @@ void App::onHotkeyCancelled()
 
 void App::onTranscriptionFinished(const QString &text)
 {
+    fprintf(stderr, "[INFO] App: transcription finished, text=%lld chars: \"%s\"\n",
+            (long long)text.length(), text.left(100).toUtf8().constData());
+    fflush(stderr);
+
     m_bubble->setState(GlassBubble::Hidden);
     setState(Idle);
 
     if (!text.isEmpty()) {
+        fprintf(stderr, "[INFO] App: pasting text at cursor\n");
+        fflush(stderr);
         TextPaster::paste(text);
     }
 }
 
 void App::setState(State state)
 {
+    fprintf(stderr, "[DEBUG] App: state %d -> %d\n", (int)m_state, (int)state);
+    fflush(stderr);
     m_state = state;
 }
 
 void App::transcribeAsync()
 {
     QVector<float> audio = m_audioCapture->getRecordedAudio();
+    fprintf(stderr, "[INFO] App: transcribing %lld samples (%.1f sec)\n",
+            (long long)audio.size(), audio.size() / 16000.0f);
+    fflush(stderr);
+
+    if (audio.isEmpty()) {
+        fprintf(stderr, "[WARN] App: no audio captured, skipping transcription\n");
+        fflush(stderr);
+        onTranscriptionFinished(QString());
+        return;
+    }
 
     QThread *thread = QThread::create([this, audio]() {
         QString text = m_transcriber->transcribe(audio, 16000);
