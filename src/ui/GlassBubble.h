@@ -40,4 +40,5 @@ private:
     QPropertyAnimation *m_fadeAnim = nullptr;
     State m_state = Hidden;
     qreal m_opacity = 0.0;
+    int m_glassId = -1;
 };

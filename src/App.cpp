@@ -10,7 +10,6 @@
 #include <QDir>
 #include <QStandardPaths>
 #include <QTimer>
-#include <QtConcurrent>
 
 App::App(QObject *parent)
     : QObject(parent)

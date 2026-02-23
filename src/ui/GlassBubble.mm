@@ -1,7 +1,7 @@
 #include "GlassBubble.h"
 #include "WaveformWidget.h"
 
-#import <AppKit/AppKit.h>
+#include <QtLiquidGlass/QtLiquidGlass.h>
 
 #include <QHBoxLayout>
 #include <QScreen>
@@ -51,33 +51,23 @@ GlassBubble::GlassBubble(QWidget *parent)
 
 GlassBubble::~GlassBubble()
 {
+    if (m_glassId >= 0) {
+        QtLiquidGlass::remove(m_glassId);
+    }
 }
 
 void GlassBubble::setupVibrancy()
 {
-    // Apply NSVisualEffectView for frosted glass behind the Qt widget
-    NSView *nsview = reinterpret_cast<NSView *>(winId());
-    if (!nsview) return;
+    QtLiquidGlass::Options opts;
+    opts.cornerRadius = 28.0;
+    opts.blendingMode = QtLiquidGlass::BlendingMode::BehindWindow;
+    opts.appearance = QtLiquidGlass::AdaptiveAppearance::Dark;
 
-    NSWindow *nswindow = [nsview window];
-    if (!nswindow) return;
+    m_glassId = QtLiquidGlass::addGlassEffect(this, QtLiquidGlass::Material::Hud, opts);
 
-    // Make the window non-opaque for vibrancy to work
-    [nswindow setOpaque:NO];
-    [nswindow setBackgroundColor:[NSColor clearColor]];
-
-    // Create visual effect view
-    NSVisualEffectView *vibrant = [[NSVisualEffectView alloc] initWithFrame:[nsview bounds]];
-    [vibrant setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
-    [vibrant setBlendingMode:NSVisualEffectBlendingModeBehindWindow];
-    [vibrant setMaterial:NSVisualEffectMaterialHUDWindow];
-    [vibrant setState:NSVisualEffectStateActive];
-    [vibrant setWantsLayer:YES];
-    vibrant.layer.cornerRadius = 28.0;
-    vibrant.layer.masksToBounds = YES;
-
-    // Insert the vibrancy view behind the Qt content
-    [nsview addSubview:vibrant positioned:NSWindowBelow relativeTo:nil];
+    if (m_glassId < 0) {
+        qWarning() << "GlassBubble: failed to apply liquid glass effect, using fallback";
+    }
 }
 
 void GlassBubble::setState(State state)
@@ -158,12 +148,13 @@ void GlassBubble::fadeOut()
 
 void GlassBubble::paintEvent(QPaintEvent *)
 {
-    QPainter painter(this);
-    painter.setRenderHint(QPainter::Antialiasing);
+    // Only draw fallback background if liquid glass failed
+    if (m_glassId < 0) {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
 
-    // Semi-transparent dark background as fallback (vibrancy view is behind)
-    QPainterPath path;
-    path.addRoundedRect(rect(), 28, 28);
-
-    painter.fillPath(path, QColor(30, 30, 30, 180));
+        QPainterPath path;
+        path.addRoundedRect(rect(), 28, 28);
+        painter.fillPath(path, QColor(30, 30, 30, 180));
+    }
 }

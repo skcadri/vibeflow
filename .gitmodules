@@ -1,0 +1,6 @@
+[submodule "deps/whisper.cpp"]
+	path = deps/whisper.cpp
+	url = https://github.com/ggml-org/whisper.cpp.git
+[submodule "deps/qt-liquid-glass"]
+	path = deps/qt-liquid-glass
+	url = https://github.com/fsalinas26/qt-liquid-glass.git
