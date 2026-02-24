@@ -18,43 +18,6 @@ qint64 TextPaster::frontmostAppPid()
     }
 }
 
-static bool postCmdV(CGEventTapLocation tap, pid_t pid)
-{
-    constexpr CGKeyCode kVK_Command = 0x37;
-    constexpr CGKeyCode kVK_V = 0x09;
-
-    CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
-    if (!source) {
-        return false;
-    }
-
-    CGEventRef cmdDown = CGEventCreateKeyboardEvent(source, kVK_Command, true);
-    CGEventRef vDown = CGEventCreateKeyboardEvent(source, kVK_V, true);
-    CGEventSetFlags(vDown, kCGEventFlagMaskCommand);
-    CGEventRef vUp = CGEventCreateKeyboardEvent(source, kVK_V, false);
-    CGEventSetFlags(vUp, kCGEventFlagMaskCommand);
-    CGEventRef cmdUp = CGEventCreateKeyboardEvent(source, kVK_Command, false);
-
-    if (pid > 0) {
-        CGEventPostToPid(pid, cmdDown);
-        CGEventPostToPid(pid, vDown);
-        CGEventPostToPid(pid, vUp);
-        CGEventPostToPid(pid, cmdUp);
-    } else {
-        CGEventPost(tap, cmdDown);
-        CGEventPost(tap, vDown);
-        CGEventPost(tap, vUp);
-        CGEventPost(tap, cmdUp);
-    }
-
-    CFRelease(cmdDown);
-    CFRelease(vDown);
-    CFRelease(vUp);
-    CFRelease(cmdUp);
-    CFRelease(source);
-    return true;
-}
-
 // Insert text via Accessibility API — directly sets text in the focused text field.
 // This is the most reliable method on modern macOS (Sequoia+/Tahoe).
 static bool insertTextViaAX(const QString &text)
@@ -125,8 +88,8 @@ static bool typeTextViaCGEvent(const QString &text)
         CGEventKeyboardSetUnicodeString(keyDown, chunkLen, &utf16[i]);
         CGEventKeyboardSetUnicodeString(keyUp,   chunkLen, &utf16[i]);
 
-        CGEventPost(kCGSessionEventTap, keyDown);
-        CGEventPost(kCGSessionEventTap, keyUp);
+        CGEventPost(kCGHIDEventTap, keyDown);
+        CGEventPost(kCGHIDEventTap, keyUp);
 
         CFRelease(keyDown);
         CFRelease(keyUp);
@@ -154,7 +117,7 @@ bool TextPaster::typeText(const QString &text)
     return typeTextViaCGEvent(text);
 }
 
-bool TextPaster::activateApp(qint64 pid, int timeoutMs)
+bool TextPaster::activateApp(qint64 pid, int /*timeoutMs*/)
 {
     @autoreleasepool {
         NSRunningApplication *app = [NSRunningApplication runningApplicationWithProcessIdentifier:(pid_t)pid];
@@ -164,33 +127,15 @@ bool TextPaster::activateApp(qint64 pid, int timeoutMs)
             return false;
         }
 
-        // Use modern activate API (macOS 14+); fall back to deprecated one on older systems.
-        if ([app respondsToSelector:@selector(activateFromApplication:options:)]) {
-            [app activateFromApplication:[NSRunningApplication currentApplication] options:0];
-        } else {
-            #pragma clang diagnostic push
-            #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-            [app activateWithOptions:NSApplicationActivateIgnoringOtherApps];
-            #pragma clang diagnostic pop
-        }
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        BOOL ok = [app activateWithOptions:NSApplicationActivateAllWindows];
+        #pragma clang diagnostic pop
 
-        // Poll until the target app is frontmost or timeout
-        const int pollIntervalUs = 10000; // 10ms
-        int elapsed = 0;
-        while (elapsed < timeoutMs * 1000) {
-            usleep(pollIntervalUs);
-            elapsed += pollIntervalUs;
-            if (frontmostAppPid() == pid) {
-                fprintf(stderr, "[INFO] TextPaster: target app pid=%lld is now frontmost (after %dms)\n",
-                        (long long)pid, elapsed / 1000);
-                fflush(stderr);
-                return true;
-            }
-        }
-
-        fprintf(stderr, "[WARN] TextPaster: timed out waiting for pid=%lld to become frontmost\n", (long long)pid);
+        fprintf(stderr, "[INFO] TextPaster: activated pid=%lld result=%d\n",
+                (long long)pid, (int)ok);
         fflush(stderr);
-        return false;
+        return ok;
     }
 }
 
@@ -207,42 +152,40 @@ bool TextPaster::pasteToPid(const QString &text, qint64 targetPid)
         [pb clearContents];
         [pb setString:text.toNSString() forType:NSPasteboardTypeString];
 
-        const bool trusted = canSimulatePaste();
-        fprintf(stderr, "[INFO] TextPaster: attempting paste (trusted=%d, targetPid=%lld)\n",
-                trusted ? 1 : 0, (long long)targetPid);
-        if (!trusted) {
-            fprintf(stderr, "[WARN] TextPaster: Accessibility not trusted; attempting best-effort key injection\n");
-        }
+        fprintf(stderr, "[INFO] TextPaster: clipboard set (%lld chars), targetPid=%lld\n",
+                (long long)text.size(), (long long)targetPid);
         fflush(stderr);
 
-        // 2. Small delay for clipboard to settle
-        usleep(50000); // 50ms
-
-        const qint64 currentFrontPid = frontmostAppPid();
-        fprintf(stderr, "[INFO] TextPaster: current frontmost pid=%lld\n", (long long)currentFrontPid);
-        fflush(stderr);
-
-        // 3. Always re-activate the target app to ensure focus + first responder
+        // 2. Re-activate the target app to ensure focus + first responder
         if (targetPid > 0) {
-            fprintf(stderr, "[INFO] TextPaster: re-activating target pid=%lld\n",
-                    (long long)targetPid);
-            fflush(stderr);
             activateApp(targetPid);
-            usleep(100000); // 100ms settle for full first responder restoration
+            usleep(80000); // 80ms settle
         }
 
-        // 4. Always post Cmd+V to the session (frontmost app)
-        bool posted = postCmdV(kCGSessionEventTap, 0);
-        if (!posted) {
-            fprintf(stderr, "[WARN] TextPaster: failed to create CG events for paste\n");
+        // 3. Simple Cmd+V: keyDown + keyUp with command flag, posted to HID tap
+        constexpr CGKeyCode kVK_V = 0x09;
+        CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+        if (!source) {
+            fprintf(stderr, "[WARN] TextPaster: failed to create event source for paste\n");
             fflush(stderr);
             return false;
         }
 
-        fprintf(stderr, "[INFO] TextPaster: posted Cmd+V to frontmost app (pid=%lld)\n",
-                (long long)frontmostAppPid());
+        CGEventRef vDown = CGEventCreateKeyboardEvent(source, kVK_V, true);
+        CGEventSetFlags(vDown, kCGEventFlagMaskCommand);
+        CGEventRef vUp = CGEventCreateKeyboardEvent(source, kVK_V, false);
+        CGEventSetFlags(vUp, kCGEventFlagMaskCommand);
+
+        CGEventPost(kCGHIDEventTap, vDown);
+        CGEventPost(kCGHIDEventTap, vUp);
+
+        CFRelease(vDown);
+        CFRelease(vUp);
+        CFRelease(source);
+
+        fprintf(stderr, "[INFO] TextPaster: posted Cmd+V to kCGHIDEventTap\n");
         fflush(stderr);
-        return trusted;
+        return true;
     }
 }
 
@@ -260,13 +203,13 @@ bool TextPaster::typeAtCursor(const QString &text, qint64 targetPid)
             return false;
         }
 
-        // Always re-activate target app to ensure it has focus + first responder
+        // Re-activate target app to ensure it has focus + first responder
         if (targetPid > 0) {
             fprintf(stderr, "[INFO] TextPaster::typeAtCursor: activating target pid=%lld\n",
                     (long long)targetPid);
             fflush(stderr);
             activateApp(targetPid);
-            usleep(100000); // 100ms settle for the app to fully regain first responder
+            usleep(80000); // 80ms settle
         }
 
         return typeText(text);

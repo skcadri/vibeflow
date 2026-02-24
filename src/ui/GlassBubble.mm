@@ -17,12 +17,9 @@ GlassBubble::GlassBubble(QWidget *parent)
 {
     // Window flags: frameless, always on top, tool window (no dock icon), no focus stealing
     setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint
-                   | Qt::Tool | Qt::WindowDoesNotAcceptFocus
-                   | Qt::WindowTransparentForInput);
+                   | Qt::Tool | Qt::WindowDoesNotAcceptFocus);
     setAttribute(Qt::WA_TranslucentBackground);
     setAttribute(Qt::WA_ShowWithoutActivating);
-    setAttribute(Qt::WA_MacAlwaysShowToolWindow);
-    setAttribute(Qt::WA_TransparentForMouseEvents);
     setFocusPolicy(Qt::NoFocus);
 
     setFixedSize(300, 56);
