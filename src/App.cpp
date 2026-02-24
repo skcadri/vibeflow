@@ -43,6 +43,11 @@ void App::initialize()
     connect(m_audioCapture, &AudioCapture::levelChanged, m_bubble, &GlassBubble::updateLevel);
     connect(m_transcriber, &Transcriber::modelLoaded, this, &App::onModelLoaded);
     connect(m_transcriber, &Transcriber::modelLoadFailed, this, &App::onModelLoadFailed);
+    connect(m_trayIcon, &TrayIcon::inputModeChanged, this, [this](bool useTypeMode) {
+        m_useTypeMode = useTypeMode;
+        fprintf(stderr, "[INFO] App: input mode changed to %s\n", useTypeMode ? "type" : "paste");
+        fflush(stderr);
+    });
 
     qInfo() << "Starting hotkey monitor...";
     if (!m_hotkeyMonitor->start()) {
@@ -166,7 +171,8 @@ void App::onTranscriptionFinished(const QString &text)
             (long long)text.length(), text.left(100).toUtf8().constData());
     fflush(stderr);
 
-    m_bubble->setState(GlassBubble::Hidden);
+    // Hide bubble synchronously (no fade animation) so it releases focus immediately
+    m_bubble->hideImmediately();
     setState(Idle);
 
     if (!text.isEmpty()) {
@@ -174,12 +180,26 @@ void App::onTranscriptionFinished(const QString &text)
         if (!textToPaste.at(textToPaste.size() - 1).isSpace()) {
             textToPaste.append(' ');
         }
-        fprintf(stderr, "[INFO] App: pasting text at cursor\n");
-        fflush(stderr);
-        if (!TextPaster::pasteToPid(textToPaste, m_pasteTargetPid) && m_trayIcon) {
-            m_trayIcon->showMessage("VibeFlow",
-                "Transcribed text copied to clipboard. Enable Accessibility for VibeFlow to auto-paste.");
-        }
+        // Defer injection by 50ms to let macOS process the window ordering change
+        const qint64 targetPid = m_pasteTargetPid;
+        const bool useTypeMode = m_useTypeMode;
+        QTimer::singleShot(50, this, [this, textToPaste, targetPid, useTypeMode]() {
+            if (useTypeMode) {
+                fprintf(stderr, "[INFO] App: typing text at cursor (deferred)\n");
+                fflush(stderr);
+                if (!TextPaster::typeAtCursor(textToPaste, targetPid) && m_trayIcon) {
+                    m_trayIcon->showMessage("VibeFlow",
+                        "Failed to type text. Enable Accessibility for VibeFlow in System Settings.");
+                }
+            } else {
+                fprintf(stderr, "[INFO] App: pasting text at cursor (deferred)\n");
+                fflush(stderr);
+                if (!TextPaster::pasteToPid(textToPaste, targetPid) && m_trayIcon) {
+                    m_trayIcon->showMessage("VibeFlow",
+                        "Transcribed text copied to clipboard. Enable Accessibility for VibeFlow to auto-paste.");
+                }
+            }
+        });
     }
 
     m_pasteTargetPid = 0;

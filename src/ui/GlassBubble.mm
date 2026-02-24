@@ -101,7 +101,7 @@ void GlassBubble::setState(State state)
             if (nsView && nsView.window) {
                 [nsView.window setLevel:NSScreenSaverWindowLevel];
                 [nsView.window setIgnoresMouseEvents:YES];
-                [nsView.window orderFrontRegardless];
+                [nsView.window orderWindow:NSWindowAbove relativeTo:0];
                 [nsView.window setCollectionBehavior:
                     NSWindowCollectionBehaviorCanJoinAllSpaces |
                     NSWindowCollectionBehaviorStationary |
@@ -117,6 +117,25 @@ void GlassBubble::setState(State state)
         m_waveform->freeze();
         break;
     }
+}
+
+void GlassBubble::hideImmediately()
+{
+    m_fadeAnim->stop();
+    m_state = Hidden;
+    m_waveform->reset();
+
+    if (windowHandle()) {
+        NSView *nsView = (__bridge NSView *)reinterpret_cast<void *>(windowHandle()->winId());
+        if (nsView && nsView.window) {
+            [nsView.window setLevel:NSNormalWindowLevel];
+            [nsView.window orderOut:nil];
+        }
+    }
+
+    setWindowOpacity(0.0);
+    m_opacity = 0.0;
+    hide();
 }
 
 void GlassBubble::updateLevel(float rmsLevel)

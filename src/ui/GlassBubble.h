@@ -18,6 +18,7 @@ public:
     ~GlassBubble();
 
     void setState(State state);
+    void hideImmediately();
 
     qreal bubbleOpacity() const { return m_opacity; }
     void setBubbleOpacity(qreal opacity);

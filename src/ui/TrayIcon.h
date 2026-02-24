@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QSystemTrayIcon>
 #include <QMenu>
+#include <QAction>
 
 class TrayIcon : public QObject
 {
@@ -14,7 +15,11 @@ public:
     void show();
     void showMessage(const QString &title, const QString &message);
 
+signals:
+    void inputModeChanged(bool useTypeMode);
+
 private:
     QSystemTrayIcon *m_trayIcon = nullptr;
     QMenu *m_menu = nullptr;
+    QAction *m_typeModeAction = nullptr;
 };

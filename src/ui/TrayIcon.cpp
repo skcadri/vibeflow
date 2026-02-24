@@ -39,6 +39,11 @@ TrayIcon::TrayIcon(QObject *parent)
 
     // Context menu
     m_menu = new QMenu();
+    m_typeModeAction = m_menu->addAction("Type at Cursor");
+    m_typeModeAction->setCheckable(true);
+    m_typeModeAction->setChecked(true);
+    connect(m_typeModeAction, &QAction::toggled, this, &TrayIcon::inputModeChanged);
+    m_menu->addSeparator();
     m_menu->addAction("About VibeFlow", []() {
         // Minimal — just a placeholder
     });
