@@ -17,6 +17,7 @@ public:
     QString transcribe(const QVector<float> &audioSamples, int sampleRate);
     bool isLoaded() const;
     void unload();
+    void setTranslate(bool translate);
 
 signals:
     void modelLoaded();
@@ -24,4 +25,5 @@ signals:
 
 private:
     whisper_context *m_ctx = nullptr;
+    bool m_translate = false;
 };

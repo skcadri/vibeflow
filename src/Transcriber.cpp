@@ -41,21 +41,41 @@ QString Transcriber::transcribe(const QVector<float> &audioSamples, int sampleRa
         return {};
     }
 
+    // Pad audio shorter than 1 second — Whisper rejects very short input
+    const int minSamples = sampleRate; // 1 second
+    QVector<float> audio = audioSamples;
+    if (audio.size() < minSamples) {
+        qInfo() << "Transcriber: padding audio from" << audio.size() << "to" << minSamples << "samples";
+        audio.resize(minSamples, 0.0f);
+    }
+
     whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
     params.language = "auto";
     params.n_threads = 8;
     params.no_timestamps = true;
-    params.translate = false;
+    params.translate = m_translate;
     params.print_progress = false;
     params.print_realtime = false;
     params.print_special = false;
     params.print_timestamps = false;
 
-    int ret = whisper_full(m_ctx, params, audioSamples.constData(), audioSamples.size());
+    int ret = whisper_full(m_ctx, params, audio.constData(), audio.size());
 
     if (ret != 0) {
         qWarning() << "Transcriber: whisper_full failed with code" << ret;
         return {};
+    }
+
+    // Suppress Hindi — if Whisper detected Hindi, re-run forced as Urdu
+    int detectedLangId = whisper_full_lang_id(m_ctx);
+    if (detectedLangId == whisper_lang_id("hi")) {
+        qInfo() << "Transcriber: Hindi detected, re-running as Urdu";
+        params.language = "ur";
+        ret = whisper_full(m_ctx, params, audio.constData(), audio.size());
+        if (ret != 0) {
+            qWarning() << "Transcriber: whisper_full (Urdu re-run) failed with code" << ret;
+            return {};
+        }
     }
 
     QString result;
@@ -80,4 +100,10 @@ void Transcriber::unload()
         whisper_free(m_ctx);
         m_ctx = nullptr;
     }
+}
+
+void Transcriber::setTranslate(bool translate)
+{
+    m_translate = translate;
+    qInfo() << "Transcriber: translate mode" << (translate ? "ON" : "OFF");
 }

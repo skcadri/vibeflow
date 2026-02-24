@@ -48,6 +48,7 @@ void App::initialize()
         fprintf(stderr, "[INFO] App: input mode changed to %s\n", useTypeMode ? "type" : "paste");
         fflush(stderr);
     });
+    connect(m_trayIcon, &TrayIcon::translateModeChanged, m_transcriber, &Transcriber::setTranslate);
 
     qInfo() << "Starting hotkey monitor...";
     if (!m_hotkeyMonitor->start()) {

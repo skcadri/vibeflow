@@ -43,6 +43,12 @@ TrayIcon::TrayIcon(QObject *parent)
     m_typeModeAction->setCheckable(true);
     m_typeModeAction->setChecked(true);
     connect(m_typeModeAction, &QAction::toggled, this, &TrayIcon::inputModeChanged);
+
+    m_translateAction = m_menu->addAction("Translate to English");
+    m_translateAction->setCheckable(true);
+    m_translateAction->setChecked(false);
+    connect(m_translateAction, &QAction::toggled, this, &TrayIcon::translateModeChanged);
+
     m_menu->addSeparator();
     m_menu->addAction("About VibeFlow", []() {
         // Minimal — just a placeholder

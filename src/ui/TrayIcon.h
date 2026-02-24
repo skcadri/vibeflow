@@ -17,9 +17,11 @@ public:
 
 signals:
     void inputModeChanged(bool useTypeMode);
+    void translateModeChanged(bool translate);
 
 private:
     QSystemTrayIcon *m_trayIcon = nullptr;
     QMenu *m_menu = nullptr;
     QAction *m_typeModeAction = nullptr;
+    QAction *m_translateAction = nullptr;
 };
