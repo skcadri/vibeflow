@@ -212,6 +212,11 @@ bool TextPaster::typeAtCursor(const QString &text, qint64 targetPid)
             usleep(80000); // 80ms settle
         }
 
-        return typeText(text);
+        if (!typeText(text)) {
+            fprintf(stderr, "[INFO] TextPaster::typeAtCursor: type failed, falling back to paste\n");
+            fflush(stderr);
+            return pasteToPid(text, targetPid);
+        }
+        return true;
     }
 }
