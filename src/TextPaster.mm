@@ -167,30 +167,35 @@ static bool typeTextViaCGEvent(const QString &text)
     return true;
 }
 
-// Paste via AppleScript Cmd+V — uses Accessibility permission, not Input Monitoring.
-// More reliable on macOS Tahoe where CGEventPost may require Input Monitoring.
-static bool pasteCmdV_AppleScript()
+// Simulate Cmd+V via CGEvent (posted to HID tap — hardware-level, trusted by apps).
+static bool pasteCmdV_CGEvent()
 {
-    @autoreleasepool {
-        NSAppleScript *script = [[NSAppleScript alloc] initWithSource:
-            @"tell application \"System Events\" to keystroke \"v\" using command down"];
-        NSDictionary *errorDict = nil;
-        [script executeAndReturnError:&errorDict];
-
-        if (errorDict) {
-            fprintf(stderr, "[WARN] TextPaster: AppleScript paste failed: %s\n",
-                    [[errorDict description] UTF8String]);
-            fflush(stderr);
-            return false;
-        }
-
-        fprintf(stderr, "[INFO] TextPaster: pasted via AppleScript Cmd+V\n");
+    constexpr CGKeyCode kVK_V = 0x09;
+    CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+    if (!source) {
+        fprintf(stderr, "[WARN] TextPaster: failed to create event source for paste\n");
         fflush(stderr);
-        return true;
+        return false;
     }
+
+    CGEventRef vDown = CGEventCreateKeyboardEvent(source, kVK_V, true);
+    CGEventSetFlags(vDown, kCGEventFlagMaskCommand);
+    CGEventRef vUp = CGEventCreateKeyboardEvent(source, kVK_V, false);
+    CGEventSetFlags(vUp, kCGEventFlagMaskCommand);
+
+    CGEventPost(kCGHIDEventTap, vDown);
+    CGEventPost(kCGHIDEventTap, vUp);
+
+    CFRelease(vDown);
+    CFRelease(vUp);
+    CFRelease(source);
+
+    fprintf(stderr, "[INFO] TextPaster: posted Cmd+V via CGEvent\n");
+    fflush(stderr);
+    return true;
 }
 
-// Set clipboard and paste via AppleScript Cmd+V.
+// Set clipboard and paste via Cmd+V.
 static bool pasteViaClipboard(const QString &text)
 {
     @autoreleasepool {
@@ -202,7 +207,7 @@ static bool pasteViaClipboard(const QString &text)
                 (long long)text.size());
         fflush(stderr);
 
-        return pasteCmdV_AppleScript();
+        return pasteCmdV_CGEvent();
     }
 }
 
