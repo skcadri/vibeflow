@@ -18,25 +18,88 @@ qint64 TextPaster::frontmostAppPid()
     }
 }
 
-// Insert text via Accessibility API — directly sets text in the focused text field.
-// This is the most reliable method on modern macOS (Sequoia+/Tahoe).
-static bool insertTextViaAX(const QString &text)
+// ---------------------------------------------------------------------------
+// Helpers (file-scoped)
+// ---------------------------------------------------------------------------
+
+// Poll until the target app is frontmost, or timeout.
+static bool waitForAppFrontmost(qint64 targetPid, int timeoutMs)
 {
-    AXUIElementRef systemWide = AXUIElementCreateSystemWide();
-    if (!systemWide) {
-        fprintf(stderr, "[WARN] TextPaster: failed to create AXUIElementCreateSystemWide\n");
-        fflush(stderr);
-        return false;
+    const int pollIntervalUs = 10000; // 10ms
+    const int maxPolls = (timeoutMs * 1000) / pollIntervalUs;
+
+    for (int i = 0; i < maxPolls; ++i) {
+        @autoreleasepool {
+            NSRunningApplication *front = [[NSWorkspace sharedWorkspace] frontmostApplication];
+            if (front && front.processIdentifier == (pid_t)targetPid) {
+                fprintf(stderr, "[INFO] TextPaster: app pid=%lld confirmed frontmost after ~%dms\n",
+                        (long long)targetPid, i * 10);
+                fflush(stderr);
+                return true;
+            }
+        }
+        usleep(pollIntervalUs);
+    }
+    return false;
+}
+
+// Insert text via Accessibility API — directly sets text in the focused text field.
+// Tries PID-targeted lookup first, then falls back to system-wide.
+static bool insertTextViaAX(const QString &text, qint64 targetPid)
+{
+    AXUIElementRef focusedElement = NULL;
+    AXError err = kAXErrorFailure;
+
+    // Strategy 1: Get focused element from the specific target app (avoids focus race)
+    if (targetPid > 0) {
+        AXUIElementRef appElement = AXUIElementCreateApplication((pid_t)targetPid);
+        if (appElement) {
+            err = AXUIElementCopyAttributeValue(appElement,
+                kAXFocusedUIElementAttribute, (CFTypeRef *)&focusedElement);
+            CFRelease(appElement);
+
+            if (err == kAXErrorSuccess && focusedElement) {
+                fprintf(stderr, "[INFO] TextPaster: got focused element from app pid=%lld\n",
+                        (long long)targetPid);
+                fflush(stderr);
+            } else {
+                fprintf(stderr, "[WARN] TextPaster: app-specific AX failed (err=%d), trying system-wide\n",
+                        (int)err);
+                fflush(stderr);
+                focusedElement = NULL;
+            }
+        }
     }
 
-    AXUIElementRef focusedElement = NULL;
-    AXError err = AXUIElementCopyAttributeValue(systemWide,
-        kAXFocusedUIElementAttribute, (CFTypeRef *)&focusedElement);
-    CFRelease(systemWide);
+    // Strategy 2: Fall back to system-wide focused element
+    if (!focusedElement) {
+        AXUIElementRef systemWide = AXUIElementCreateSystemWide();
+        if (!systemWide) {
+            fprintf(stderr, "[WARN] TextPaster: failed to create AXUIElementCreateSystemWide\n");
+            fflush(stderr);
+            return false;
+        }
 
-    if (err != kAXErrorSuccess || !focusedElement) {
-        fprintf(stderr, "[WARN] TextPaster: AX can't get focused element (err=%d)\n", (int)err);
+        err = AXUIElementCopyAttributeValue(systemWide,
+            kAXFocusedUIElementAttribute, (CFTypeRef *)&focusedElement);
+        CFRelease(systemWide);
+
+        if (err != kAXErrorSuccess || !focusedElement) {
+            fprintf(stderr, "[WARN] TextPaster: AX can't get focused element (err=%d)\n", (int)err);
+            fflush(stderr);
+            return false;
+        }
+    }
+
+    // Check if the focused element actually accepts text input
+    Boolean settable = false;
+    AXError settableErr = AXUIElementIsAttributeSettable(focusedElement,
+        kAXSelectedTextAttribute, &settable);
+    if (settableErr != kAXErrorSuccess || !settable) {
+        fprintf(stderr, "[WARN] TextPaster: focused element does not accept text "
+                "(settable=%d, err=%d)\n", (int)settable, (int)settableErr);
         fflush(stderr);
+        CFRelease(focusedElement);
         return false;
     }
 
@@ -104,12 +167,55 @@ static bool typeTextViaCGEvent(const QString &text)
     return true;
 }
 
+// Paste via AppleScript Cmd+V — uses Accessibility permission, not Input Monitoring.
+// More reliable on macOS Tahoe where CGEventPost may require Input Monitoring.
+static bool pasteCmdV_AppleScript()
+{
+    @autoreleasepool {
+        NSAppleScript *script = [[NSAppleScript alloc] initWithSource:
+            @"tell application \"System Events\" to keystroke \"v\" using command down"];
+        NSDictionary *errorDict = nil;
+        [script executeAndReturnError:&errorDict];
+
+        if (errorDict) {
+            fprintf(stderr, "[WARN] TextPaster: AppleScript paste failed: %s\n",
+                    [[errorDict description] UTF8String]);
+            fflush(stderr);
+            return false;
+        }
+
+        fprintf(stderr, "[INFO] TextPaster: pasted via AppleScript Cmd+V\n");
+        fflush(stderr);
+        return true;
+    }
+}
+
+// Set clipboard and paste via AppleScript Cmd+V.
+static bool pasteViaClipboard(const QString &text)
+{
+    @autoreleasepool {
+        NSPasteboard *pb = [NSPasteboard generalPasteboard];
+        [pb clearContents];
+        [pb setString:text.toNSString() forType:NSPasteboardTypeString];
+
+        fprintf(stderr, "[INFO] TextPaster: clipboard set (%lld chars)\n",
+                (long long)text.size());
+        fflush(stderr);
+
+        return pasteCmdV_AppleScript();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
 bool TextPaster::typeText(const QString &text)
 {
     if (text.isEmpty()) return true;
 
     // Primary: AX API (most reliable, doesn't touch clipboard or require key injection)
-    if (insertTextViaAX(text)) return true;
+    if (insertTextViaAX(text, 0)) return true;
 
     // Fallback: CGEvent Unicode keyboard injection
     fprintf(stderr, "[INFO] TextPaster::typeText: AX failed, falling back to CGEvent injection\n");
@@ -117,25 +223,53 @@ bool TextPaster::typeText(const QString &text)
     return typeTextViaCGEvent(text);
 }
 
-bool TextPaster::activateApp(qint64 pid, int /*timeoutMs*/)
+bool TextPaster::activateApp(qint64 pid, int timeoutMs)
 {
     @autoreleasepool {
-        NSRunningApplication *app = [NSRunningApplication runningApplicationWithProcessIdentifier:(pid_t)pid];
+        NSRunningApplication *app = [NSRunningApplication
+            runningApplicationWithProcessIdentifier:(pid_t)pid];
         if (!app) {
             fprintf(stderr, "[WARN] TextPaster: no running app for pid=%lld\n", (long long)pid);
             fflush(stderr);
             return false;
         }
 
-        #pragma clang diagnostic push
-        #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-        BOOL ok = [app activateWithOptions:NSApplicationActivateAllWindows];
-        #pragma clang diagnostic pop
+        BOOL activateResult = NO;
 
-        fprintf(stderr, "[INFO] TextPaster: activated pid=%lld result=%d\n",
-                (long long)pid, (int)ok);
-        fflush(stderr);
-        return ok;
+        // macOS 14+: use modern cooperative activation API
+        if (@available(macOS 14.0, *)) {
+            [[NSApplication sharedApplication] yieldActivationToApplication:app];
+            activateResult = [app activateFromApplication:[NSRunningApplication currentApplication]
+                                                  options:NSApplicationActivateAllWindows];
+            fprintf(stderr, "[INFO] TextPaster: activate (modern API) pid=%lld result=%d\n",
+                    (long long)pid, (int)activateResult);
+            fflush(stderr);
+        } else {
+            // Fallback for macOS 13 and earlier
+            #pragma clang diagnostic push
+            #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+            activateResult = [app activateWithOptions:NSApplicationActivateAllWindows];
+            #pragma clang diagnostic pop
+            fprintf(stderr, "[INFO] TextPaster: activate (legacy API) pid=%lld result=%d\n",
+                    (long long)pid, (int)activateResult);
+            fflush(stderr);
+        }
+
+        if (!activateResult) {
+            fprintf(stderr, "[WARN] TextPaster: activation request failed for pid=%lld\n",
+                    (long long)pid);
+            fflush(stderr);
+            return false;
+        }
+
+        // Poll to verify the target app actually became frontmost
+        bool verified = waitForAppFrontmost(pid, timeoutMs);
+        if (!verified) {
+            fprintf(stderr, "[WARN] TextPaster: app pid=%lld did not become frontmost within %dms\n",
+                    (long long)pid, timeoutMs);
+            fflush(stderr);
+        }
+        return verified;
     }
 }
 
@@ -147,45 +281,11 @@ bool TextPaster::paste(const QString &text)
 bool TextPaster::pasteToPid(const QString &text, qint64 targetPid)
 {
     @autoreleasepool {
-        // 1. Set clipboard
-        NSPasteboard *pb = [NSPasteboard generalPasteboard];
-        [pb clearContents];
-        [pb setString:text.toNSString() forType:NSPasteboardTypeString];
-
-        fprintf(stderr, "[INFO] TextPaster: clipboard set (%lld chars), targetPid=%lld\n",
-                (long long)text.size(), (long long)targetPid);
-        fflush(stderr);
-
-        // 2. Re-activate the target app to ensure focus + first responder
         if (targetPid > 0) {
             activateApp(targetPid);
-            usleep(80000); // 80ms settle
+            // activateApp now includes polling verification, no separate usleep needed
         }
-
-        // 3. Simple Cmd+V: keyDown + keyUp with command flag, posted to HID tap
-        constexpr CGKeyCode kVK_V = 0x09;
-        CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
-        if (!source) {
-            fprintf(stderr, "[WARN] TextPaster: failed to create event source for paste\n");
-            fflush(stderr);
-            return false;
-        }
-
-        CGEventRef vDown = CGEventCreateKeyboardEvent(source, kVK_V, true);
-        CGEventSetFlags(vDown, kCGEventFlagMaskCommand);
-        CGEventRef vUp = CGEventCreateKeyboardEvent(source, kVK_V, false);
-        CGEventSetFlags(vUp, kCGEventFlagMaskCommand);
-
-        CGEventPost(kCGHIDEventTap, vDown);
-        CGEventPost(kCGHIDEventTap, vUp);
-
-        CFRelease(vDown);
-        CFRelease(vUp);
-        CFRelease(source);
-
-        fprintf(stderr, "[INFO] TextPaster: posted Cmd+V to kCGHIDEventTap\n");
-        fflush(stderr);
-        return true;
+        return pasteViaClipboard(text);
     }
 }
 
@@ -203,20 +303,52 @@ bool TextPaster::typeAtCursor(const QString &text, qint64 targetPid)
             return false;
         }
 
-        // Re-activate target app to ensure it has focus + first responder
+        // Step 1: Activate the target app and verify it's frontmost
         if (targetPid > 0) {
             fprintf(stderr, "[INFO] TextPaster::typeAtCursor: activating target pid=%lld\n",
                     (long long)targetPid);
             fflush(stderr);
-            activateApp(targetPid);
-            usleep(80000); // 80ms settle
+            if (!activateApp(targetPid)) {
+                fprintf(stderr, "[WARN] TextPaster::typeAtCursor: activation failed, "
+                        "falling back to paste\n");
+                fflush(stderr);
+                return pasteViaClipboard(text);
+            }
         }
 
-        if (!typeText(text)) {
-            fprintf(stderr, "[INFO] TextPaster::typeAtCursor: type failed, falling back to paste\n");
-            fflush(stderr);
-            return pasteToPid(text, targetPid);
+        // Step 2: Try AX insertion (most reliable on Tahoe — pure AX, no CGEvent)
+        if (insertTextViaAX(text, targetPid)) {
+            return true;
         }
-        return true;
+
+        // Step 3: Fallback to clipboard paste (AppleScript Cmd+V)
+        fprintf(stderr, "[INFO] TextPaster::typeAtCursor: AX insertion failed, "
+                "falling back to paste\n");
+        fflush(stderr);
+        return pasteViaClipboard(text);
+    }
+}
+
+void TextPaster::logDiagnostics()
+{
+    @autoreleasepool {
+        fprintf(stderr, "[DIAG] TextPaster diagnostics:\n");
+
+        // Prompt for Accessibility permission if not granted yet.
+        // AXIsProcessTrustedWithOptions with kAXTrustedCheckOptionPrompt opens
+        // the System Settings dialog on first launch.
+        NSDictionary *opts = @{(__bridge NSString *)kAXTrustedCheckOptionPrompt: @YES};
+        bool trusted = AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)opts);
+        fprintf(stderr, "[DIAG]   AXIsProcessTrusted = %d\n", trusted);
+
+        CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+        fprintf(stderr, "[DIAG]   CGEventSource creation = %s\n",
+                source ? "OK" : "FAILED");
+        if (source) CFRelease(source);
+
+        NSOperatingSystemVersion v = [[NSProcessInfo processInfo] operatingSystemVersion];
+        fprintf(stderr, "[DIAG]   macOS version = %ld.%ld.%ld\n",
+                (long)v.majorVersion, (long)v.minorVersion, (long)v.patchVersion);
+        fflush(stderr);
     }
 }

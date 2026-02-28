@@ -18,6 +18,7 @@ public:
 signals:
     void inputModeChanged(bool useTypeMode);
     void translateModeChanged(bool translate);
+    void testPasteRequested();
 
 private:
     QSystemTrayIcon *m_trayIcon = nullptr;

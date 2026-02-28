@@ -2,6 +2,7 @@
 #include "whisper.h"
 
 #include <QDebug>
+#include <thread>
 
 Transcriber::Transcriber(QObject *parent)
     : QObject(parent)
@@ -17,6 +18,7 @@ void Transcriber::loadModel(const QString &modelPath)
 {
     struct whisper_context_params cparams = whisper_context_default_params();
     cparams.use_gpu = true;
+    cparams.flash_attn = true;
 
     m_ctx = whisper_init_from_file_with_params(modelPath.toUtf8().constData(), cparams);
 
@@ -51,7 +53,7 @@ QString Transcriber::transcribe(const QVector<float> &audioSamples, int sampleRa
 
     whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
     params.language = "auto";
-    params.n_threads = 8;
+    params.n_threads = std::min(16, (int)std::thread::hardware_concurrency());
     params.no_timestamps = true;
     params.translate = m_translate;
     params.print_progress = false;

@@ -12,4 +12,5 @@ public:
     static bool typeText(const QString &text);
     static bool typeAtCursor(const QString &text, qint64 targetPid);
     static bool activateApp(qint64 pid, int timeoutMs = 500);
+    static void logDiagnostics();
 };

@@ -50,6 +50,8 @@ TrayIcon::TrayIcon(QObject *parent)
     connect(m_translateAction, &QAction::toggled, this, &TrayIcon::translateModeChanged);
 
     m_menu->addSeparator();
+    m_menu->addAction("Test Paste", this, &TrayIcon::testPasteRequested);
+    m_menu->addSeparator();
     m_menu->addAction("About VibeFlow", []() {
         // Minimal — just a placeholder
     });

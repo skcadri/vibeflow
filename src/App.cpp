@@ -49,12 +49,33 @@ void App::initialize()
         fflush(stderr);
     });
     connect(m_trayIcon, &TrayIcon::translateModeChanged, m_transcriber, &Transcriber::setTranslate);
+    connect(m_trayIcon, &TrayIcon::testPasteRequested, this, [this]() {
+        fprintf(stderr, "[TEST] Test Paste triggered — waiting 3s for you to click a text field...\n");
+        fflush(stderr);
+        if (m_trayIcon)
+            m_trayIcon->showMessage("VibeFlow", "Click a text field within 3 seconds...");
+        QTimer::singleShot(3000, this, [this]() {
+            qint64 targetPid = TextPaster::frontmostAppPid();
+            if (targetPid == static_cast<qint64>(QCoreApplication::applicationPid()))
+                targetPid = 0;
+            fprintf(stderr, "[TEST] Attempting paste to pid=%lld\n", (long long)targetPid);
+            fflush(stderr);
+            bool ok = TextPaster::typeAtCursor(QStringLiteral("Hello from VibeFlow! "), targetPid);
+            fprintf(stderr, "[TEST] typeAtCursor result=%d\n", ok);
+            fflush(stderr);
+            if (!ok && m_trayIcon) {
+                m_trayIcon->showMessage("VibeFlow", "Test paste failed — check Accessibility permission.");
+            }
+        });
+    });
 
     qInfo() << "Starting hotkey monitor...";
     if (!m_hotkeyMonitor->start()) {
         qWarning() << "Failed to start hotkey monitor — grant Accessibility permission";
         m_trayIcon->showMessage("VibeFlow", "Please grant Accessibility permission in System Settings");
     }
+
+    TextPaster::logDiagnostics();
 
     m_trayIcon->show();
     qInfo() << "Tray icon shown, loading model...";
