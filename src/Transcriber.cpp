@@ -51,15 +51,19 @@ QString Transcriber::transcribe(const QVector<float> &audioSamples, int sampleRa
         audio.resize(minSamples, 0.0f);
     }
 
-    whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
+    whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_BEAM_SEARCH);
+    params.beam_search.beam_size = 5;
     params.language = "auto";
     params.n_threads = std::min(16, (int)std::thread::hardware_concurrency());
-    params.no_timestamps = true;
+    params.no_timestamps = false;
     params.translate = m_translate;
     params.print_progress = false;
     params.print_realtime = false;
     params.print_special = false;
     params.print_timestamps = false;
+    params.suppress_blank = true;
+    params.entropy_thold = 2.4f;
+    params.logprob_thold = -1.0f;
 
     // Apply vocabulary prompt if set — QByteArray must stay in scope during whisper_full()
     QByteArray promptUtf8;
@@ -75,8 +79,13 @@ QString Transcriber::transcribe(const QVector<float> &audioSamples, int sampleRa
         return {};
     }
 
-    // Suppress Hindi — if Whisper detected Hindi, re-run forced as Urdu
+    // Check detected language
     int detectedLangId = whisper_full_lang_id(m_ctx);
+    const char *detectedLang = whisper_lang_str(detectedLangId);
+    qInfo() << "Transcriber: detected language:" << detectedLang
+            << "segments:" << whisper_full_n_segments(m_ctx);
+
+    // Suppress Hindi — if Whisper detected Hindi, re-run forced as Urdu
     if (detectedLangId == whisper_lang_id("hi")) {
         qInfo() << "Transcriber: Hindi detected, re-running as Urdu";
         params.language = "ur";
