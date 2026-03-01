@@ -28,9 +28,12 @@ add_executable(VibeFlow MACOSX_BUNDLE
     src/AudioCapture.cpp
     src/HotkeyMonitor.mm
     src/TextPaster.mm
+    src/data/SettingsManager.cpp
     src/ui/GlassBubble.mm
     src/ui/WaveformWidget.cpp
     src/ui/TrayIcon.cpp
+    src/ui/RecentTranscriptionsDialog.cpp
+    src/ui/VocabularyDialog.cpp
 )
 
 target_include_directories(VibeFlow PRIVATE

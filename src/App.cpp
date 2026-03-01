@@ -3,8 +3,11 @@
 #include "AudioCapture.h"
 #include "HotkeyMonitor.h"
 #include "TextPaster.h"
+#include "data/SettingsManager.h"
 #include "ui/GlassBubble.h"
 #include "ui/TrayIcon.h"
+#include "ui/RecentTranscriptionsDialog.h"
+#include "ui/VocabularyDialog.h"
 
 #include <QApplication>
 #include <QCoreApplication>
@@ -29,6 +32,7 @@ void App::initialize()
 {
     qInfo() << "Creating components...";
 
+    m_settings = new SettingsManager(this);
     m_transcriber = new Transcriber(this);
     m_audioCapture = new AudioCapture(this);
     m_hotkeyMonitor = new HotkeyMonitor(this);
@@ -69,6 +73,9 @@ void App::initialize()
         });
     });
 
+    connect(m_trayIcon, &TrayIcon::recentTranscriptionsRequested, this, &App::showRecentTranscriptions);
+    connect(m_trayIcon, &TrayIcon::vocabularyRequested, this, &App::showVocabulary);
+
     qInfo() << "Starting hotkey monitor...";
     if (!m_hotkeyMonitor->start()) {
         qWarning() << "Failed to start hotkey monitor — grant Accessibility permission";
@@ -80,6 +87,7 @@ void App::initialize()
     m_trayIcon->show();
     qInfo() << "Tray icon shown, loading model...";
 
+    updateTranscriberPrompt();
     loadModelAsync();
 }
 
@@ -198,6 +206,8 @@ void App::onTranscriptionFinished(const QString &text)
     setState(Idle);
 
     if (!text.isEmpty()) {
+        m_settings->addTranscription(text);
+
         QString textToPaste = text;
         if (!textToPaste.at(textToPaste.size() - 1).isSpace()) {
             textToPaste.append(' ');
@@ -282,4 +292,26 @@ void App::transcribeAsync()
     });
     connect(thread, &QThread::finished, thread, &QThread::deleteLater);
     thread->start();
+}
+
+void App::updateTranscriberPrompt()
+{
+    QString prompt = m_settings->buildPromptString();
+    m_transcriber->setInitialPrompt(prompt);
+}
+
+void App::showRecentTranscriptions()
+{
+    auto *dlg = new RecentTranscriptionsDialog(m_settings);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    dlg->exec();
+}
+
+void App::showVocabulary()
+{
+    auto *dlg = new VocabularyDialog(m_settings);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    dlg->exec();
+    // Refresh prompt after vocabulary changes
+    updateTranscriberPrompt();
 }

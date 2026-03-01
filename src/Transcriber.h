@@ -18,6 +18,7 @@ public:
     bool isLoaded() const;
     void unload();
     void setTranslate(bool translate);
+    void setInitialPrompt(const QString &prompt);
 
 signals:
     void modelLoaded();
@@ -26,4 +27,5 @@ signals:
 private:
     whisper_context *m_ctx = nullptr;
     bool m_translate = false;
+    QString m_initialPrompt;
 };

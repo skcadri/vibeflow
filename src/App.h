@@ -8,6 +8,7 @@ class AudioCapture;
 class HotkeyMonitor;
 class GlassBubble;
 class TrayIcon;
+class SettingsManager;
 
 class App : public QObject
 {
@@ -33,6 +34,9 @@ private:
     void setState(State state);
     void loadModelAsync();
     void transcribeAsync();
+    void updateTranscriberPrompt();
+    void showRecentTranscriptions();
+    void showVocabulary();
 
     State m_state = Idle;
     Transcriber *m_transcriber = nullptr;
@@ -40,6 +44,7 @@ private:
     HotkeyMonitor *m_hotkeyMonitor = nullptr;
     GlassBubble *m_bubble = nullptr;
     TrayIcon *m_trayIcon = nullptr;
+    SettingsManager *m_settings = nullptr;
     bool m_modelReady = false;
     bool m_useTypeMode = true;
     qint64 m_pasteTargetPid = 0;

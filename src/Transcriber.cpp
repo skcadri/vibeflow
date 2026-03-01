@@ -61,6 +61,13 @@ QString Transcriber::transcribe(const QVector<float> &audioSamples, int sampleRa
     params.print_special = false;
     params.print_timestamps = false;
 
+    // Apply vocabulary prompt if set — QByteArray must stay in scope during whisper_full()
+    QByteArray promptUtf8;
+    if (!m_initialPrompt.isEmpty()) {
+        promptUtf8 = m_initialPrompt.toUtf8();
+        params.initial_prompt = promptUtf8.constData();
+    }
+
     int ret = whisper_full(m_ctx, params, audio.constData(), audio.size());
 
     if (ret != 0) {
@@ -108,4 +115,10 @@ void Transcriber::setTranslate(bool translate)
 {
     m_translate = translate;
     qInfo() << "Transcriber: translate mode" << (translate ? "ON" : "OFF");
+}
+
+void Transcriber::setInitialPrompt(const QString &prompt)
+{
+    m_initialPrompt = prompt;
+    qInfo() << "Transcriber: initial prompt set to" << (prompt.isEmpty() ? "(empty)" : prompt);
 }

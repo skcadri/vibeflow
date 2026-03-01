@@ -29,6 +29,8 @@ int main(int argc, char *argv[])
     fprintf(stderr, "[INFO] QApplication created\n");
     fflush(stderr);
 
+    app.setOrganizationName("sohaib");
+    app.setOrganizationDomain("com.sohaib");
     app.setApplicationName("VibeFlow");
     app.setApplicationVersion("1.0.0");
     app.setQuitOnLastWindowClosed(false);
