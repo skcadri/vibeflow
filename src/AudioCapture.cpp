@@ -49,17 +49,36 @@ AudioCapture::AudioCapture(QObject *parent)
     m_levelTimer = new QTimer(this);
     m_levelTimer->setInterval(33); // ~30fps
     connect(m_levelTimer, &QTimer::timeout, this, &AudioCapture::onTimerTick);
+
+    // Monitor for audio device changes so we can reinitialize when the user
+    // switches microphones.
+    m_mediaDevices = new QMediaDevices(this);
+    connect(m_mediaDevices, &QMediaDevices::audioInputsChanged,
+            this, &AudioCapture::onDefaultInputChanged);
 }
 
 AudioCapture::~AudioCapture()
 {
-    stop();
+    m_levelTimer->stop();
+    destroySource();
 }
 
-void AudioCapture::start()
+void AudioCapture::destroySource()
 {
-    m_audioBuffer->clear();
-    m_currentRms = 0.0f;
+    if (m_source) {
+        m_source->stop();
+        m_inputDevice = nullptr;
+        disconnect(m_audioBuffer, nullptr, this, nullptr);
+        delete m_source;
+        m_source = nullptr;
+    }
+    m_deviceReady = false;
+}
+
+void AudioCapture::initDevice()
+{
+    // Tear down any existing source first.
+    destroySource();
 
     QAudioDevice defaultDevice = QMediaDevices::defaultAudioInput();
     if (defaultDevice.isNull()) {
@@ -68,10 +87,8 @@ void AudioCapture::start()
         return;
     }
 
-    fprintf(stderr, "[INFO] AudioCapture: device: %s\n",
+    fprintf(stderr, "[INFO] AudioCapture: initDevice: %s\n",
             defaultDevice.description().toUtf8().constData());
-
-    // Log supported ranges
     fprintf(stderr, "[INFO] AudioCapture: supported sample rates: %d - %d\n",
             defaultDevice.minimumSampleRate(), defaultDevice.maximumSampleRate());
     fprintf(stderr, "[INFO] AudioCapture: supported channels: %d - %d\n",
@@ -99,17 +116,27 @@ void AudioCapture::start()
     m_source = new QAudioSource(defaultDevice, format, this);
     m_source->setBufferSize(format.sampleRate() * format.channelCount() * 2); // 1 second
 
-    // True pull mode: start() returns a QIODevice we read from on our timer tick.
+    // Start in pull mode then immediately suspend — the device is open and warm
+    // but not actively capturing. resume() in start() is near-instant.
     m_inputDevice = m_source->start();
 
-    fprintf(stderr, "[INFO] AudioCapture: started (pull mode), state=%d error=%d\n",
+    fprintf(stderr, "[INFO] AudioCapture: initDevice started (pull mode), state=%d error=%d\n",
             (int)m_source->state(), (int)m_source->error());
     if (!m_inputDevice) {
-        fprintf(stderr, "[ERROR] AudioCapture: start() returned null input device\n");
+        fprintf(stderr, "[ERROR] AudioCapture: initDevice start() returned null input device\n");
+        fflush(stderr);
+        destroySource();
+        return;
     }
     fflush(stderr);
 
-    // Track incoming data for RMS visualization
+    m_source->suspend();
+    // Drain any data that arrived between start() and suspend().
+    if (m_inputDevice) {
+        m_inputDevice->readAll();
+    }
+
+    // Connect RMS tracking (persists across start/stop cycles).
     connect(m_audioBuffer, &AudioBuffer::dataWritten, this, [this](qint64 len) {
         const QByteArray &buf = m_audioBuffer->buffer();
         if (buf.size() >= len) {
@@ -117,21 +144,61 @@ void AudioCapture::start()
         }
     });
 
-    m_levelTimer->start();
-    fprintf(stderr, "[INFO] AudioCapture: recording started\n");
+    m_deviceReady = true;
+    fprintf(stderr, "[INFO] AudioCapture: device ready (suspended)\n");
     fflush(stderr);
+}
+
+void AudioCapture::onDefaultInputChanged()
+{
+    fprintf(stderr, "[INFO] AudioCapture: audio input devices changed, reinitializing\n");
+    fflush(stderr);
+    // Only reinitialize if we're not in the middle of a recording.
+    if (m_levelTimer->isActive()) {
+        fprintf(stderr, "[INFO] AudioCapture: currently recording, deferring reinit\n");
+        fflush(stderr);
+        return;
+    }
+    initDevice();
+}
+
+void AudioCapture::start()
+{
+    if (!m_deviceReady) {
+        initDevice();
+        if (!m_deviceReady) return;
+    }
+
+    m_audioBuffer->clear();
+    m_currentRms = 0.0f;
+
+    // Drain any stale data that accumulated while suspended.
+    if (m_inputDevice) {
+        m_inputDevice->readAll();
+    }
+
+    m_source->resume();
+    fprintf(stderr, "[INFO] AudioCapture: recording started (resumed), state=%d\n",
+            (int)m_source->state());
+    fflush(stderr);
+
+    m_levelTimer->start();
 }
 
 void AudioCapture::stop()
 {
     m_levelTimer->stop();
 
-    if (m_source) {
-        m_source->stop();
-        m_inputDevice = nullptr;
-        disconnect(m_audioBuffer, nullptr, this, nullptr);
-        delete m_source;
-        m_source = nullptr;
+    if (m_source && m_deviceReady) {
+        // Drain remaining audio BEFORE suspending to avoid losing data
+        // still in Core Audio's internal buffer.
+        if (m_inputDevice) {
+            QByteArray chunk = m_inputDevice->readAll();
+            if (!chunk.isEmpty()) {
+                m_audioBuffer->append(chunk.constData(), chunk.size());
+            }
+        }
+        m_source->suspend();
     }
 
     fprintf(stderr, "[INFO] AudioCapture: recording stopped, %lld bytes captured (%lld samples at %dHz %dch)\n",

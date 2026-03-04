@@ -51,6 +51,11 @@ QString Transcriber::transcribe(const QVector<float> &audioSamples, int sampleRa
         audio.resize(minSamples, 0.0f);
     }
 
+    // Append trailing silence so Whisper's decoder can cleanly finish the last segment.
+    // Without this, abruptly-ending speech causes the final words to be dropped.
+    const int padSamples = sampleRate * 3 / 10; // 300ms
+    audio.resize(audio.size() + padSamples, 0.0f);
+
     whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_BEAM_SEARCH);
     params.beam_search.beam_size = 5;
     params.language = "auto";

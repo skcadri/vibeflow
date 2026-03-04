@@ -87,6 +87,10 @@ void App::initialize()
     m_trayIcon->show();
     qInfo() << "Tray icon shown, loading model...";
 
+    // Pre-initialize the audio device so it's warm and ready when the hotkey
+    // is first pressed (avoids ~2s delay from device enumeration + Core Audio init).
+    QTimer::singleShot(0, m_audioCapture, &AudioCapture::initDevice);
+
     updateTranscriberPrompt();
     loadModelAsync();
 }

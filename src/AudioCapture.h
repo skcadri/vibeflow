@@ -32,6 +32,8 @@ private:
     QByteArray m_data;
 };
 
+class QMediaDevices;
+
 class AudioCapture : public QObject
 {
     Q_OBJECT
@@ -39,6 +41,7 @@ public:
     explicit AudioCapture(QObject *parent = nullptr);
     ~AudioCapture();
 
+    void initDevice();
     void start();
     void stop();
     QVector<float> getRecordedAudio() const;
@@ -48,14 +51,18 @@ signals:
 
 private slots:
     void onTimerTick();
+    void onDefaultInputChanged();
 
 private:
     void computeRms(const char *data, qint64 len);
+    void destroySource();
 
     QAudioSource *m_source = nullptr;
     QIODevice *m_inputDevice = nullptr;
     AudioBuffer *m_audioBuffer = nullptr;
     QTimer *m_levelTimer = nullptr;
+    QMediaDevices *m_mediaDevices = nullptr;
     QAudioFormat m_captureFormat;
     float m_currentRms = 0.0f;
+    bool m_deviceReady = false;
 };
