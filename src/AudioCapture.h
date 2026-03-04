@@ -44,6 +44,7 @@ public:
     void initDevice();
     void start();
     void stop();
+    void setKeepActive(bool keep);
     QVector<float> getRecordedAudio() const;
 
 signals:
@@ -65,4 +66,5 @@ private:
     QAudioFormat m_captureFormat;
     float m_currentRms = 0.0f;
     bool m_deviceReady = false;
+    bool m_keepActive = false;
 };

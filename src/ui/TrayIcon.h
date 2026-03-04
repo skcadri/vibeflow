@@ -18,6 +18,7 @@ public:
 signals:
     void inputModeChanged(bool useTypeMode);
     void translateModeChanged(bool translate);
+    void keepMicActiveChanged(bool keepActive);
     void testPasteRequested();
     void recentTranscriptionsRequested();
     void vocabularyRequested();
@@ -27,4 +28,5 @@ private:
     QMenu *m_menu = nullptr;
     QAction *m_typeModeAction = nullptr;
     QAction *m_translateAction = nullptr;
+    QAction *m_keepMicActiveAction = nullptr;
 };

@@ -53,6 +53,7 @@ void App::initialize()
         fflush(stderr);
     });
     connect(m_trayIcon, &TrayIcon::translateModeChanged, m_transcriber, &Transcriber::setTranslate);
+    connect(m_trayIcon, &TrayIcon::keepMicActiveChanged, m_audioCapture, &AudioCapture::setKeepActive);
     connect(m_trayIcon, &TrayIcon::testPasteRequested, this, [this]() {
         fprintf(stderr, "[TEST] Test Paste triggered — waiting 3s for you to click a text field...\n");
         fflush(stderr);

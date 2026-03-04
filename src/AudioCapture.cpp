@@ -130,8 +130,10 @@ void AudioCapture::initDevice()
     }
     fflush(stderr);
 
-    m_source->suspend();
-    // Drain any data that arrived between start() and suspend().
+    if (!m_keepActive) {
+        m_source->suspend();
+    }
+    // Drain any data that arrived between start() and suspend/init.
     if (m_inputDevice) {
         m_inputDevice->readAll();
     }
@@ -145,8 +147,30 @@ void AudioCapture::initDevice()
     });
 
     m_deviceReady = true;
-    fprintf(stderr, "[INFO] AudioCapture: device ready (suspended)\n");
+    fprintf(stderr, "[INFO] AudioCapture: device ready (%s)\n",
+            m_keepActive ? "active" : "suspended");
     fflush(stderr);
+}
+
+void AudioCapture::setKeepActive(bool keep)
+{
+    m_keepActive = keep;
+    fprintf(stderr, "[INFO] AudioCapture: keep microphone active = %s\n",
+            keep ? "true" : "false");
+    fflush(stderr);
+
+    if (!m_source || !m_deviceReady) return;
+
+    if (keep) {
+        // Wake the mic immediately if it's currently suspended.
+        m_source->resume();
+        if (m_inputDevice) {
+            m_inputDevice->readAll(); // drain stale data
+        }
+    } else if (!m_levelTimer->isActive()) {
+        // Not recording — suspend the mic now.
+        m_source->suspend();
+    }
 }
 
 void AudioCapture::onDefaultInputChanged()
@@ -198,7 +222,9 @@ void AudioCapture::stop()
                 m_audioBuffer->append(chunk.constData(), chunk.size());
             }
         }
-        m_source->suspend();
+        if (!m_keepActive) {
+            m_source->suspend();
+        }
     }
 
     fprintf(stderr, "[INFO] AudioCapture: recording stopped, %lld bytes captured (%lld samples at %dHz %dch)\n",

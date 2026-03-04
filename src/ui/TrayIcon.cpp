@@ -49,6 +49,11 @@ TrayIcon::TrayIcon(QObject *parent)
     m_translateAction->setChecked(false);
     connect(m_translateAction, &QAction::toggled, this, &TrayIcon::translateModeChanged);
 
+    m_keepMicActiveAction = m_menu->addAction("Keep Microphone Active");
+    m_keepMicActiveAction->setCheckable(true);
+    m_keepMicActiveAction->setChecked(false);
+    connect(m_keepMicActiveAction, &QAction::toggled, this, &TrayIcon::keepMicActiveChanged);
+
     m_menu->addSeparator();
     m_menu->addAction("Recent Transcriptions...", this, &TrayIcon::recentTranscriptionsRequested);
     m_menu->addAction("Vocabulary...", this, &TrayIcon::vocabularyRequested);
