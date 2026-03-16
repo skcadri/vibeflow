@@ -54,6 +54,11 @@ TrayIcon::TrayIcon(QObject *parent)
     m_keepMicActiveAction->setChecked(false);
     connect(m_keepMicActiveAction, &QAction::toggled, this, &TrayIcon::keepMicActiveChanged);
 
+    m_serverAction = m_menu->addAction("Enable Transcription Server");
+    m_serverAction->setCheckable(true);
+    m_serverAction->setChecked(false);
+    connect(m_serverAction, &QAction::toggled, this, &TrayIcon::serverModeChanged);
+
     m_menu->addSeparator();
     m_menu->addAction("Recent Transcriptions...", this, &TrayIcon::recentTranscriptionsRequested);
     m_menu->addAction("Vocabulary...", this, &TrayIcon::vocabularyRequested);
@@ -82,4 +87,13 @@ void TrayIcon::show()
 void TrayIcon::showMessage(const QString &title, const QString &message)
 {
     m_trayIcon->showMessage(title, message, QSystemTrayIcon::Information, 3000);
+}
+
+void TrayIcon::setServerPort(int port)
+{
+    if (port > 0) {
+        m_serverAction->setText(QString("Transcription Server (port %1)").arg(port));
+    } else {
+        m_serverAction->setText("Enable Transcription Server");
+    }
 }

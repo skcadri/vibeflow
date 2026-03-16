@@ -211,6 +211,51 @@ static bool pasteViaClipboard(const QString &text)
     }
 }
 
+// Snapshot pasteboard by extracting raw data for each type from each item.
+// NSPasteboardItem does NOT conform to NSCopying, so we must copy the data manually.
+static NSArray<NSDictionary<NSString *, NSData *> *> *snapshotPasteboardItems()
+{
+    NSPasteboard *pb = [NSPasteboard generalPasteboard];
+    NSArray<NSPasteboardItem *> *items = [pb pasteboardItems];
+    if (!items || items.count == 0) {
+        return @[];
+    }
+
+    NSMutableArray<NSDictionary<NSString *, NSData *> *> *snapshots =
+        [NSMutableArray arrayWithCapacity:items.count];
+    for (NSPasteboardItem *item in items) {
+        NSMutableDictionary<NSString *, NSData *> *itemData = [NSMutableDictionary dictionary];
+        for (NSString *type in [item types]) {
+            NSData *data = [item dataForType:type];
+            if (data) {
+                itemData[type] = data;
+            }
+        }
+        if (itemData.count > 0) {
+            [snapshots addObject:itemData];
+        }
+    }
+    return [snapshots copy];
+}
+
+static void restorePasteboardItems(NSArray<NSDictionary<NSString *, NSData *> *> *snapshots)
+{
+    NSPasteboard *pb = [NSPasteboard generalPasteboard];
+    [pb clearContents];
+    if (snapshots.count == 0) return;
+
+    NSMutableArray<NSPasteboardItem *> *items =
+        [NSMutableArray arrayWithCapacity:snapshots.count];
+    for (NSDictionary<NSString *, NSData *> *itemData in snapshots) {
+        NSPasteboardItem *item = [[NSPasteboardItem alloc] init];
+        for (NSString *type in itemData) {
+            [item setData:itemData[type] forType:type];
+        }
+        [items addObject:item];
+    }
+    [pb writeObjects:items];
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -297,7 +342,10 @@ bool TextPaster::pasteToPid(const QString &text, qint64 targetPid)
 bool TextPaster::typeAtCursor(const QString &text, qint64 targetPid)
 {
     @autoreleasepool {
+        auto savedPasteboardItems = snapshotPasteboardItems();
+        const NSInteger initialPasteboardChangeCount = [[NSPasteboard generalPasteboard] changeCount];
         const bool trusted = canSimulatePaste();
+        bool ok = false;
         fprintf(stderr, "[INFO] TextPaster::typeAtCursor: (trusted=%d, targetPid=%lld)\n",
                 trusted ? 1 : 0, (long long)targetPid);
         fflush(stderr);
@@ -305,32 +353,42 @@ bool TextPaster::typeAtCursor(const QString &text, qint64 targetPid)
         if (!trusted) {
             fprintf(stderr, "[WARN] TextPaster::typeAtCursor: Accessibility not trusted\n");
             fflush(stderr);
-            return false;
-        }
-
-        // Step 1: Activate the target app and verify it's frontmost
-        if (targetPid > 0) {
-            fprintf(stderr, "[INFO] TextPaster::typeAtCursor: activating target pid=%lld\n",
-                    (long long)targetPid);
-            fflush(stderr);
-            if (!activateApp(targetPid)) {
-                fprintf(stderr, "[WARN] TextPaster::typeAtCursor: activation failed, "
-                        "falling back to paste\n");
+        } else {
+            // Step 1: Activate the target app and verify it's frontmost
+            if (targetPid > 0) {
+                fprintf(stderr, "[INFO] TextPaster::typeAtCursor: activating target pid=%lld\n",
+                        (long long)targetPid);
                 fflush(stderr);
-                return pasteViaClipboard(text);
+                if (!activateApp(targetPid)) {
+                    fprintf(stderr, "[WARN] TextPaster::typeAtCursor: activation failed, "
+                            "falling back to CGEvent typing\n");
+                    fflush(stderr);
+                    ok = typeTextViaCGEvent(text);
+                }
+            }
+
+            // Step 2: Try AX insertion (most reliable on Tahoe — pure AX, no CGEvent)
+            if (!ok && insertTextViaAX(text, targetPid)) {
+                ok = true;
+            }
+
+            // Step 3: Fallback to CGEvent typing while keeping the clipboard untouched.
+            if (!ok) {
+                fprintf(stderr, "[INFO] TextPaster::typeAtCursor: AX insertion failed, "
+                        "falling back to CGEvent typing\n");
+                fflush(stderr);
+                ok = typeTextViaCGEvent(text);
             }
         }
 
-        // Step 2: Try AX insertion (most reliable on Tahoe — pure AX, no CGEvent)
-        if (insertTextViaAX(text, targetPid)) {
-            return true;
+        NSPasteboard *pb = [NSPasteboard generalPasteboard];
+        if ([pb changeCount] != initialPasteboardChangeCount) {
+            fprintf(stderr, "[WARN] TextPaster::typeAtCursor: pasteboard changed during type mode, restoring previous contents\n");
+            fflush(stderr);
+            restorePasteboardItems(savedPasteboardItems);
         }
 
-        // Step 3: Fallback to clipboard paste (AppleScript Cmd+V)
-        fprintf(stderr, "[INFO] TextPaster::typeAtCursor: AX insertion failed, "
-                "falling back to paste\n");
-        fflush(stderr);
-        return pasteViaClipboard(text);
+        return ok;
     }
 }
 

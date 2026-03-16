@@ -25,6 +25,7 @@ add_executable(VibeFlow MACOSX_BUNDLE
     src/main.cpp
     src/App.cpp
     src/Transcriber.cpp
+    src/TranscriptionServer.cpp
     src/AudioCapture.cpp
     src/HotkeyMonitor.mm
     src/TextPaster.mm
@@ -40,6 +41,7 @@ target_include_directories(VibeFlow PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/deps/whisper.cpp/include
     ${CMAKE_SOURCE_DIR}/deps/whisper.cpp
+    ${CMAKE_SOURCE_DIR}/deps/whisper.cpp/examples/server
 )
 
 target_link_libraries(VibeFlow PRIVATE

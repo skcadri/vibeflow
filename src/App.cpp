@@ -1,5 +1,6 @@
 #include "App.h"
 #include "Transcriber.h"
+#include "TranscriptionServer.h"
 #include "AudioCapture.h"
 #include "HotkeyMonitor.h"
 #include "TextPaster.h"
@@ -34,6 +35,7 @@ void App::initialize()
 
     m_settings = new SettingsManager(this);
     m_transcriber = new Transcriber(this);
+    m_server = new TranscriptionServer(m_transcriber, this);
     m_audioCapture = new AudioCapture(this);
     m_hotkeyMonitor = new HotkeyMonitor(this);
     m_bubble = new GlassBubble();
@@ -54,6 +56,24 @@ void App::initialize()
     });
     connect(m_trayIcon, &TrayIcon::translateModeChanged, m_transcriber, &Transcriber::setTranslate);
     connect(m_trayIcon, &TrayIcon::keepMicActiveChanged, m_audioCapture, &AudioCapture::setKeepActive);
+    connect(m_trayIcon, &TrayIcon::serverModeChanged, this, [this](bool enabled) {
+        const int port = 8080;
+        if (enabled) {
+            m_server->start(port);
+            if (m_server->isRunning()) {
+                m_trayIcon->setServerPort(port);
+                m_trayIcon->showMessage("VibeFlow",
+                    QString("Transcription server started on 127.0.0.1:%1").arg(port));
+            } else {
+                m_trayIcon->showMessage("VibeFlow",
+                    QString("Failed to start server — port %1 may be in use").arg(port));
+            }
+        } else {
+            m_server->stop();
+            m_trayIcon->setServerPort(0);
+            m_trayIcon->showMessage("VibeFlow", "Transcription server stopped");
+        }
+    });
     connect(m_trayIcon, &TrayIcon::testPasteRequested, this, [this]() {
         fprintf(stderr, "[TEST] Test Paste triggered — waiting 3s for you to click a text field...\n");
         fflush(stderr);
