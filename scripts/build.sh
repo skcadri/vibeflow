@@ -51,10 +51,10 @@ codesign --force --deep --sign "$SIGN_IDENTITY" .
 cd ../..
 
 # Copy model into app bundle Resources if present
-MODEL_SRC="models/ggml-large-v3.bin"
-MODEL_DST="build/VibeFlow.app/Contents/Resources/ggml-large-v3.bin"
+MODEL_SRC="models/ggml-large-v3-turbo.bin"
+MODEL_DST="build/VibeFlow.app/Contents/Resources/ggml-large-v3-turbo.bin"
 if [ -f "$MODEL_SRC" ] && [ ! -f "$MODEL_DST" ]; then
-    echo "Copying model into app bundle (~3GB)..."
+    echo "Copying model into app bundle (~1.6GB)..."
     cp "$MODEL_SRC" "$MODEL_DST"
     # Re-sign after adding model
     codesign --force --deep --sign "$SIGN_IDENTITY" build/VibeFlow.app
