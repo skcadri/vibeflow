@@ -4,6 +4,26 @@ Native macOS voice dictation powered by [whisper.cpp](https://github.com/ggml-or
 
 Inspired by [Wispr Flow](https://wisprflow.com).
 
+---
+
+<div align="center">
+
+### 🤖 Easiest install: hand it to your AI agent
+
+</div>
+
+Paste this single line into **Claude Code**, **Cursor**, **ChatGPT** (with shell access), or any coding agent that can run commands on your Mac:
+
+```
+Install VibeFlow on this Mac by following https://github.com/skcadri/vibeflow/blob/main/INSTALL.md
+```
+
+The agent will install Homebrew, build the app, copy it to `/Applications`, and walk you through granting the two macOS permissions.
+
+> **Prefer to do it yourself?** Open Terminal and follow [**INSTALL.md**](INSTALL.md) — it's one copy-paste block.
+
+---
+
 ## Features
 
 - **Hold-to-dictate**: Hold Cmd+Ctrl to record, release to transcribe and paste
@@ -30,104 +50,9 @@ Hold Cmd+Ctrl → frosted glass bubble appears at the bottom of the screen with 
 
 - macOS 14+ (Sonoma or later) — tested on macOS Tahoe (26.x)
 - Apple Silicon (M1/M2/M3/M4)
-- ~1.6 GB disk space for the whisper large-v3-turbo model
-- Homebrew (for `qt@6` and `cmake`)
+- ~5 GB free disk space (1.6 GB model + Qt6 + build artifacts)
 
-## Install on Your Mac
-
-VibeFlow ships as source code that you build locally. The block below is **fully self-contained** — it installs Homebrew if you don't have it, fetches every dependency, downloads the whisper model, builds the app, and installs it to `/Applications`. It takes 10–25 minutes depending on your internet speed.
-
-You don't need to be a developer. Just open **Terminal.app** (press Cmd+Space → type "Terminal" → Enter), paste the whole block below, and press Return:
-
-```bash
-set -e
-
-# 1. Sanity checks: Apple Silicon + macOS 14+
-if [[ "$(uname -m)" != "arm64" ]]; then
-  echo "❌ VibeFlow requires Apple Silicon (M1/M2/M3/M4). Detected: $(uname -m)"; exit 1
-fi
-if [[ "$(sw_vers -productVersion | cut -d. -f1)" -lt 14 ]]; then
-  echo "❌ VibeFlow requires macOS 14 (Sonoma) or later. Detected: $(sw_vers -productVersion)"; exit 1
-fi
-
-# 2. Install Homebrew if missing (will prompt for sudo password the first time)
-if ! command -v brew &>/dev/null; then
-  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-  eval "$(/opt/homebrew/bin/brew shellenv)"
-fi
-
-# 3. Build dependencies
-brew install qt@6 cmake git
-
-# 4. Clone the source (skips if already present)
-SRC=~/vibeflow-src
-if [ ! -d "$SRC" ]; then
-  git clone --recurse-submodules https://github.com/skcadri/vibeflow.git "$SRC"
-fi
-cd "$SRC"
-
-# 5. Download the whisper large-v3-turbo model (~1.6 GB, one-time)
-bash scripts/download-model.sh
-
-# 6. Build, bundle, and code-sign
-bash scripts/build.sh
-
-# 7. Install to /Applications
-osascript -e 'tell application "VibeFlow" to quit' 2>/dev/null || true
-pkill -x VibeFlow 2>/dev/null || true
-rm -rf /Applications/VibeFlow.app
-cp -R build/VibeFlow.app /Applications/
-
-# 8. Launch
-open /Applications/VibeFlow.app
-
-cat <<'BANNER'
-
-================================================================
-  ✅ VibeFlow is installed and launching now.
-
-  Two permissions to grant on first launch:
-
-  1) MICROPHONE — macOS will pop up a dialog. Click "Allow".
-
-  2) ACCESSIBILITY — required for VibeFlow to type at your cursor.
-     Open System Settings → Privacy & Security → Accessibility,
-     find "VibeFlow" in the list, and toggle it ON.
-
-     Shortcut: paste this in Terminal to jump straight there:
-     open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
-
-  Then hold ⌘+Ctrl, speak, release — text appears at your cursor.
-================================================================
-BANNER
-```
-
-### Give this to your AI agent
-
-If you'd rather have a coding agent (Claude Code, Cursor, ChatGPT with shell access, etc.) do the install for you, paste this prompt:
-
-> Set up VibeFlow on this Mac for me. The repo is https://github.com/skcadri/vibeflow and the canonical install instructions are in its README under "Install on Your Mac". Verify the machine is Apple Silicon and macOS 14+, install Homebrew if missing, install `qt@6` and `cmake` via Homebrew, clone the repo to `~/vibeflow-src` with `--recurse-submodules`, run `bash scripts/download-model.sh` to fetch the ~1.6 GB whisper large-v3-turbo model, run `bash scripts/build.sh` to build, then quit any running VibeFlow and install with `rm -rf /Applications/VibeFlow.app && cp -R build/VibeFlow.app /Applications/`. After install, walk me through granting Microphone (auto-prompt) and Accessibility (System Settings → Privacy & Security → Accessibility → toggle VibeFlow on) permissions. If anything fails, show me the error and suggest a fix.
-
-### First Launch
-
-macOS will prompt for permissions on first launch:
-1. **Microphone** — click "Allow" (required for recording)
-2. **Accessibility** — System Settings → Privacy & Security → Accessibility → enable VibeFlow (required for keystroke simulation / paste)
-
-### After Rebuilds — Reset TCC Permissions
-
-macOS revokes Accessibility and Microphone permissions when the code signature hash changes, which happens on every rebuild. **After reinstalling**, run:
-
-```bash
-osascript -e 'tell application "VibeFlow" to quit' 2>/dev/null
-pkill -x VibeFlow 2>/dev/null
-tccutil reset Accessibility com.sohaib.vibeflow
-tccutil reset Microphone   com.sohaib.vibeflow
-tccutil reset ListenEvent  com.sohaib.vibeflow
-tccutil reset PostEvent    com.sohaib.vibeflow
-```
-
-Then re-launch and grant permissions again. Without this, you'll see silence from the mic or "Type at Cursor failed" tray messages with no obvious cause. `CLAUDE.md` has the full background.
+For installation, see **[INSTALL.md](INSTALL.md)**.
 
 ## Architecture
 
@@ -230,7 +155,7 @@ The resulting app bundle is at `build/VibeFlow.app`.
 
 ## Troubleshooting
 
-- **Mic returns silence / "Type at Cursor failed"** — see the [TCC reset workflow](#after-rebuilds--reset-tcc-permissions) above. Almost always a code-signature-changed-after-rebuild issue.
+- **Mic returns silence / "Type at Cursor failed"** — see the [TCC reset workflow in INSTALL.md](INSTALL.md#after-rebuilding--reset-tcc-permissions). Almost always a code-signature-changed-after-rebuild issue.
 - **Diagnostic logs** — run from terminal to see the `fprintf(stderr, ...)` traces:
   ```bash
   /Applications/VibeFlow.app/Contents/MacOS/VibeFlow 2>&1 | tee /tmp/vf.log
