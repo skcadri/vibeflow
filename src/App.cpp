@@ -104,6 +104,10 @@ void App::initialize()
     }
 
     TextPaster::logDiagnostics();
+    if (!TextPaster::canSimulatePaste()) {
+        m_trayIcon->showMessage("VibeFlow",
+            "Accessibility permission required. Grant it in System Settings → Privacy & Security → Accessibility.");
+    }
 
     m_trayIcon->show();
     qInfo() << "Tray icon shown, loading model...";
@@ -246,7 +250,7 @@ void App::onTranscriptionFinished(const QString &text)
                 fflush(stderr);
                 if (!TextPaster::typeAtCursor(textToPaste, targetPid) && m_trayIcon) {
                     m_trayIcon->showMessage("VibeFlow",
-                        "Failed to type text. Enable Accessibility for VibeFlow in System Settings.");
+                        "Type at Cursor failed — re-enable Accessibility for VibeFlow in System Settings → Privacy & Security.");
                 }
             } else {
                 fprintf(stderr, "[INFO] App: pasting text at cursor (deferred)\n");
