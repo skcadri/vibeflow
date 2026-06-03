@@ -92,8 +92,10 @@ main.cpp
 | File | Purpose | Key Details |
 |------|---------|-------------|
 | `src/AudioCapture.h/.cpp` | Microphone recording | **Pull-mode** `QAudioSource` → custom `AudioBuffer` QIODevice. Handles format negotiation (prefers 16kHz mono Int16, falls back to device preferred format). Resamples to 16kHz mono float32 for whisper. Emits RMS levels at 30fps for waveform |
-| `src/Transcriber.h/.cpp` | whisper.cpp wrapper | Loads model async in QThread. Transcribes float32 16kHz mono audio. Uses `WHISPER_SAMPLING_GREEDY`, `language="auto"`, 8 threads. Metal GPU enabled |
+| `src/Transcriber.h/.cpp` | whisper.cpp wrapper | Loads model async in QThread. Transcribes float32 16kHz mono audio. Uses `WHISPER_SAMPLING_BEAM_SEARCH` (beam 5), `language="auto"`, `min(16, hw)` threads. Metal GPU enabled. Output is cleaned via `isHallucination()` (drops known canned phrases) and `stripSpeakerLabel()` (removes hallucinated `Name:` speaker prefixes — see note below) |
 | `src/TextPaster.h/.mm` | Clipboard + paste | Sets `NSPasteboard`, waits 50ms, simulates Cmd+V via `CGEventPost` |
+
+**Speaker-label hallucination note:** On long, monologue-style dictation that resembles podcast/interview audio, whisper large-v3-turbo invents a leading speaker label (e.g. `Tim Cynova:`, `Malisa Siddharth:`) drawn from its training data. `Transcriber::stripSpeakerLabel()` removes a leading run of 1–3 capitalized words followed by a colon. This is safe because spoken dictation never contains a literal colon, so any leading `Word:` prefix is a model artifact (the tradeoff: a deliberately dictated leading `Note:`/`Reminder:` is also stripped). `TranscriptionServer::transcribeChunked()` additionally runs the same strip on the chunk **carry-forward** prompt, so a hallucinated label can't be re-injected into — and repeated across — every subsequent 30s chunk.
 
 ### Input
 

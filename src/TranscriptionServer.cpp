@@ -453,7 +453,9 @@ void TranscriptionServer::transcribeChunked(
                 if (!prompt.empty()) prompt += " ";
                 prompt += words[i];
             }
-            contextPrompt = QString::fromStdString(prompt);
+            // Strip any hallucinated speaker label before carrying it forward, so a
+            // bogus "Tim Cynova:" prefix can't be re-injected into every later chunk.
+            contextPrompt = Transcriber::stripSpeakerLabel(QString::fromStdString(prompt));
         }
 
         // Update job progress

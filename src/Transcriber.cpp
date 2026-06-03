@@ -2,6 +2,7 @@
 #include "whisper.h"
 
 #include <QDebug>
+#include <QRegularExpression>
 #include <thread>
 
 // Shared hallucination phrases — Whisper emits these on silent/very short audio
@@ -66,6 +67,25 @@ bool Transcriber::isHallucination(const QString &text)
             return true;
     }
     return false;
+}
+
+// Removes a leading speaker-attribution label that Whisper hallucinates on long,
+// podcast/interview-like monologue (e.g. "Tim Cynova: ", "Malisa Siddharth: ").
+// Spoken dictation never contains a literal colon, so a leading sequence of 1–3
+// capitalized words followed by a colon is always a model artifact, not user speech.
+// Applied repeatedly to peel off labels that were concatenated across chunk
+// boundaries ("Tim Cynova: Tim Cynova: ...").
+QString Transcriber::stripSpeakerLabel(const QString &text)
+{
+    static const QRegularExpression re(
+        QStringLiteral(u"^\\s*[A-Z][\\w'’.\\-]*(?:\\s+[A-Z][\\w'’.\\-]*){0,2}:\\s*"));
+    QString out = text;
+    QString prev;
+    do {
+        prev = out;
+        out.remove(re); // `^` anchor means only the leading label is matched
+    } while (out != prev && !out.isEmpty());
+    return out;
 }
 
 QString Transcriber::transcribe(const QVector<float> &audioSamples, int sampleRate)
@@ -134,7 +154,7 @@ QString Transcriber::transcribe(const QVector<float> &audioSamples, int sampleRa
         result += QString::fromUtf8(whisper_full_get_segment_text(m_ctx, i));
     }
 
-    QString trimmed = result.trimmed();
+    QString trimmed = stripSpeakerLabel(result.trimmed());
 
     if (isHallucination(trimmed)) {
         qInfo() << "Transcriber: suppressed hallucination:" << trimmed;
@@ -195,10 +215,11 @@ TranscriptionResult Transcriber::transcribeWithSegments(
 
     for (int i = 0; i < nSegments; i++) {
         const char *segText = whisper_full_get_segment_text(m_ctx, i);
-        QString segQStr = QString::fromUtf8(segText).trimmed();
+        QString segQStr = stripSpeakerLabel(QString::fromUtf8(segText).trimmed());
 
-        // Per-segment hallucination filter
-        if (isHallucination(segQStr))
+        // Per-segment hallucination filter (also drops segments that were nothing
+        // but a hallucinated speaker label, now stripped to empty)
+        if (segQStr.isEmpty() || isHallucination(segQStr))
             continue;
 
         int64_t t0 = whisper_full_get_segment_t0(m_ctx, i); // centiseconds

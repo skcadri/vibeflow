@@ -38,6 +38,10 @@ public:
     void setTranslate(bool translate);
     void setInitialPrompt(const QString &prompt);
 
+    // Strips a hallucinated leading speaker label (e.g. "Tim Cynova: ") from text.
+    // Public so TranscriptionServer can sanitize the chunk carry-forward prompt.
+    static QString stripSpeakerLabel(const QString &text);
+
     // For external callers (TranscriptionServer) that need chunk-level mutex control
     std::mutex &mutex() { return m_mutex; }
 
