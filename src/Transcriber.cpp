@@ -69,16 +69,17 @@ bool Transcriber::isHallucination(const QString &text)
     return false;
 }
 
-// Removes a leading speaker-attribution label that Whisper hallucinates on long,
-// podcast/interview-like monologue (e.g. "Tim Cynova: ", "Malisa Siddharth: ").
-// Spoken dictation never contains a literal colon, so a leading sequence of 1–3
-// capitalized words followed by a colon is always a model artifact, not user speech.
-// Applied repeatedly to peel off labels that were concatenated across chunk
-// boundaries ("Tim Cynova: Tim Cynova: ...").
+// Removes a leading speaker-attribution label that Whisper hallucinates
+// (e.g. "Tim Cynova: ", "Artyaz, Mathias, Salman, Oswego, : ").
+// Spoken dictation never contains a literal colon, so a leading run of 1–6
+// capitalized words (optionally comma-separated) followed by a colon is a model
+// artifact, not user speech. Callers must apply this per segment — the label
+// can start any segment, not just the first.
+// Applied repeatedly to peel off stacked labels ("Tim Cynova: Tim Cynova: ...").
 QString Transcriber::stripSpeakerLabel(const QString &text)
 {
     static const QRegularExpression re(
-        QStringLiteral(u"^\\s*[A-Z][\\w'’.\\-]*(?:\\s+[A-Z][\\w'’.\\-]*){0,2}:\\s*"));
+        QStringLiteral(u"^\\s*[A-Z][\\w'’.\\-]*(?:,?\\s+[A-Z][\\w'’.\\-]*){0,5},?\\s*:\\s*"));
     QString out = text;
     QString prev;
     do {
@@ -148,13 +149,16 @@ QString Transcriber::transcribe(const QVector<float> &audioSamples, int sampleRa
         }
     }
 
-    QString result;
+    QStringList parts;
     int nSegments = whisper_full_n_segments(m_ctx);
     for (int i = 0; i < nSegments; i++) {
-        result += QString::fromUtf8(whisper_full_get_segment_text(m_ctx, i));
+        QString seg = stripSpeakerLabel(
+            QString::fromUtf8(whisper_full_get_segment_text(m_ctx, i)).trimmed());
+        if (!seg.isEmpty())
+            parts << seg;
     }
 
-    QString trimmed = stripSpeakerLabel(result.trimmed());
+    QString trimmed = parts.join(' ');
 
     if (isHallucination(trimmed)) {
         qInfo() << "Transcriber: suppressed hallucination:" << trimmed;
