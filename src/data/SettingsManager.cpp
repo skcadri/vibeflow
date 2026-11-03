@@ -81,9 +81,15 @@ void SettingsManager::removeWord(const QString &word)
     setVocabulary(words);
 }
 
+// Whisper reads the prompt as "what was said just before" and copies its shape.
+// Never format it as a "Label: name, name, ..." header — that taught the model to
+// emit fake speaker tags made of names ("Artyaz, Mathias, Salman, Oswego, : ...").
+// A plain spoken sentence with no colon still biases spelling without that shape.
 QString SettingsManager::buildPromptString() const
 {
     QStringList words = vocabulary();
     if (words.isEmpty()) return {};
-    return QStringLiteral("Vocabulary: ") + words.join(", ");
+    const QString last = words.takeLast();
+    const QString list = words.isEmpty() ? last : words.join(", ") + " and " + last;
+    return QStringLiteral("I mentioned ") + list + QStringLiteral(".");
 }
