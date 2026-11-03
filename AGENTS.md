@@ -4,7 +4,7 @@ This file helps AI coding agents (and human contributors) navigate and understan
 
 ## What is VibeFlow?
 
-A native macOS voice dictation app. Hold **Cmd+Ctrl** to record, release to transcribe with whisper.cpp (large-v3 model on Metal GPU), and paste the text at the cursor position. A frosted glass waveform bubble appears at the bottom of the screen during recording.
+A native macOS voice dictation app. Hold **Cmd+Ctrl** to record, release to transcribe with transcribe.cpp (Qwen3-ASR 1.7B on Metal GPU, Whisper large-v3-turbo for Urdu), and paste the text at the cursor position. A frosted glass waveform bubble appears at the bottom of the screen during recording.
 
 Think of it as an open-source alternative to [Wispr Flow](https://wisprflow.com).
 
@@ -15,7 +15,7 @@ Think of it as an open-source alternative to [Wispr Flow](https://wisprflow.com)
 | Language | C++17 / Objective-C++ |
 | UI framework | Qt 6 (Widgets + Multimedia) |
 | Glass effect | [qt-liquid-glass](https://github.com/fsalinas26/qt-liquid-glass) |
-| Transcription | [whisper.cpp](https://github.com/ggml-org/whisper.cpp) with Metal GPU |
+| Transcription | [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) (ggml, Metal GPU): Qwen3-ASR 1.7B + Whisper large-v3-turbo |
 | Audio capture | Qt Multimedia (`QAudioSource`) |
 | Global hotkey | `CGEventSourceFlagsState` polling (60Hz) |
 | Paste at cursor | `NSPasteboard` + `CGEventPost` (Cmd+V simulation) |
@@ -85,19 +85,19 @@ main.cpp
 |------|---------|-------------|
 | `src/main.cpp` | Entry point | Creates QApplication, installs stderr message handler, enters event loop |
 | `src/App.h/.cpp` | State machine controller | Wires all components together, manages Idle/Recording/Processing states |
-| `CMakeLists.txt` | Build configuration | Qt6, whisper.cpp (Metal), qt-liquid-glass, ObjC++ support |
+| `CMakeLists.txt` | Build configuration | Qt6, transcribe.cpp (Metal), qt-liquid-glass, ObjC++ support |
 
 ### Audio Pipeline
 
 | File | Purpose | Key Details |
 |------|---------|-------------|
-| `src/AudioCapture.h/.cpp` | Microphone recording | **Pull-mode** `QAudioSource` → custom `AudioBuffer` QIODevice. Handles format negotiation (prefers 16kHz mono Int16, falls back to device preferred format). Resamples to 16kHz mono float32 for whisper. Emits RMS levels at 30fps for waveform |
-| `src/Transcriber.h/.cpp` | whisper.cpp wrapper | Loads model async in QThread. Transcribes float32 16kHz mono audio. Uses `WHISPER_SAMPLING_BEAM_SEARCH` (beam 5), `language="auto"`, `min(16, hw)` threads. Metal GPU enabled. Output is cleaned via `isHallucination()` (drops known canned phrases) and `stripSpeakerLabel()` (removes hallucinated `Name:` speaker prefixes — see note below) |
+| `src/AudioCapture.h/.cpp` | Microphone recording | **Pull-mode** `QAudioSource` → custom `AudioBuffer` QIODevice. Handles format negotiation (prefers 16kHz mono Int16, falls back to device preferred format). Resamples to 16kHz mono float32 for the transcriber. Emits RMS levels at 30fps for waveform |
+| `src/Transcriber.h/.cpp` | transcribe.cpp wrapper | Loads both models async in a QThread. `transcribe()` (hotkey) runs **Qwen3-ASR**; if the output contains any Devanagari (Qwen has no Urdu, so Urdu comes back as Hindi script) it re-runs **Whisper** with `language="ur"`. `transcribeWithSegments()` (HTTP server) runs **Whisper** because Qwen3-ASR has no timestamps. Vocabulary goes through transcribe.cpp's `vocabulary` field, which formats it per model — never hand-build a prompt string from it. Every segment is cleaned via `isHallucination()` and `stripSpeakerLabel()` (see note below) |
 | `src/TextPaster.h/.mm` | Clipboard + paste | Sets `NSPasteboard`, waits 50ms, simulates Cmd+V via `CGEventPost` |
 
-**Speaker-label hallucination note:** whisper large-v3-turbo invents fake speaker labels (e.g. `Tim Cynova:`, `Artyaz, Mathias, Salman, Oswego, :`), at the start of any segment, not just the first. The main trigger was the vocabulary prompt: it used to be built as `Vocabulary: name, name, …`, and Whisper copies the prompt's shape, so it emitted name-list labels (often including a real vocabulary word). Rules:
-- **Never format the initial prompt as a `Label: list` header.** `SettingsManager::buildPromptString()` builds a plain sentence with no colon (`I mentioned A, B and C.`).
-- **Strip per segment.** `Transcriber::stripSpeakerLabel()` removes a leading run of 1–6 capitalized words (optionally comma-separated) followed by a colon. Both `transcribe()` and `transcribeWithSegments()` apply it to every segment before joining. Spoken dictation never contains a literal colon, so this is safe (tradeoff: a deliberately dictated leading `Note:`/`Action Items:` is also stripped).
+**Speaker-label hallucination note:** Whisper invents fake speaker labels (e.g. `Tim Cynova:`, `Artyaz, Mathias, Salman, Oswego, :`) at the start of any segment. The trigger was a vocabulary prompt shaped like `Vocabulary: name, name, …` — Whisper copies the prompt's shape. transcribe.cpp independently dropped its `Glossary: …` vocabulary header for the same reason (upstream commit `8facde6`). Rules:
+- **Never wrap vocabulary in a `Label: list` header.** Pass the raw word list to `transcribe_run_params::vocabulary`.
+- **Strip per segment.** `Transcriber::stripSpeakerLabel()` removes a leading run of 1–6 capitalized words (optionally comma-separated) followed by a colon. `cleanSegments()` applies it to every segment before joining. Spoken dictation never contains a literal colon, so this is safe (tradeoff: a deliberately dictated leading `Note:`/`Action Items:` is also stripped).
 - `TranscriptionServer::transcribeChunked()` also strips the chunk **carry-forward** prompt, so a label can't be re-injected into every later 30s chunk.
 
 ### Input
@@ -119,9 +119,9 @@ main.cpp
 | File | Purpose |
 |------|---------|
 | `scripts/build.sh` | Full pipeline: cmake → build → macdeployqt → rpath fix → codesign → model copy |
-| `scripts/download-model.sh` | Downloads ggml-large-v3.bin (~3GB) from Hugging Face |
+| `scripts/download-model.sh` | Downloads both GGUF models (~3.1 GB) into `models/` |
 | `resources/Info.plist` | Bundle metadata. `LSUIElement=true` (no Dock icon). `NSMicrophoneUsageDescription` for TCC prompt |
-| `.gitmodules` | Submodules: `deps/whisper.cpp`, `deps/qt-liquid-glass` |
+| `.gitmodules` | Submodules: `deps/transcribe.cpp` (pinned past v0.4.1 for the vocabulary-header fix), `deps/qt-liquid-glass`. `deps/httplib/httplib.h` is vendored (single header, MIT) for the HTTP server |
 
 ## Known Bug: Audio Capture Returns Silence
 
@@ -163,7 +163,7 @@ brew install qt@6 cmake
 git clone --recurse-submodules https://github.com/skcadri/vibeflow.git
 cd vibeflow
 
-# Download whisper large-v3 model (~3GB)
+# Download Qwen3-ASR + Whisper GGUF models (~3.1GB)
 bash scripts/download-model.sh
 ```
 
@@ -193,11 +193,9 @@ cmake --build build -j$(sysctl -n hw.ncpu)
 
 ## CMake Build Details
 
-- `WHISPER_METAL ON` — GPU acceleration on Apple Silicon
-- `WHISPER_METAL_EMBED_LIBRARY ON` — Metal shader embedded in binary (no external .metallib)
-- `WHISPER_COREML OFF` — CoreML has build compatibility issues on macOS Tahoe
+- transcribe.cpp enables Metal automatically on Apple Silicon; `GGML_METAL_EMBED_LIBRARY ON` embeds the shaders (no external .metallib)
+- transcribe.cpp sets its public include dir from `CMAKE_SOURCE_DIR`, which breaks under `add_subdirectory()`. `CMakeLists.txt` re-adds `deps/transcribe.cpp/include` to the `transcribe` target — keep that line when bumping the submodule until upstream fixes it
 - `.mm` files compiled with `-fobjc-arc` (automatic reference counting)
-- `ggml-metal.m` forced to compile as `LANGUAGE OBJC` (CMake would default to plain C)
 
 ## Coding Conventions
 

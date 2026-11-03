@@ -35,7 +35,7 @@ private:
     void setState(State state);
     void loadModelAsync();
     void transcribeAsync();
-    void updateTranscriberPrompt();
+    void updateTranscriberVocabulary();
     void showRecentTranscriptions();
     void showVocabulary();
 

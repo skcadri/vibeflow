@@ -18,7 +18,6 @@ public:
 
 signals:
     void inputModeChanged(bool useTypeMode);
-    void translateModeChanged(bool translate);
     void keepMicActiveChanged(bool keepActive);
     void serverModeChanged(bool enabled);
     void testPasteRequested();
@@ -29,7 +28,6 @@ private:
     QSystemTrayIcon *m_trayIcon = nullptr;
     QMenu *m_menu = nullptr;
     QAction *m_typeModeAction = nullptr;
-    QAction *m_translateAction = nullptr;
     QAction *m_keepMicActiveAction = nullptr;
     QAction *m_serverAction = nullptr;
 };

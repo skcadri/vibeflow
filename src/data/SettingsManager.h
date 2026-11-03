@@ -27,7 +27,6 @@ public:
     void setVocabulary(const QStringList &words);
     void addWord(const QString &word);
     void removeWord(const QString &word);
-    QString buildPromptString() const;
 
     static constexpr int MaxHistory = 50;
 };
