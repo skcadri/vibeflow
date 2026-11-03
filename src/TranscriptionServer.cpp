@@ -378,7 +378,6 @@ std::string TranscriptionServer::segmentsToJson(const std::vector<TranscriptionS
         json += "{\"start\":" + std::string(startBuf)
               + ",\"end\":" + std::string(endBuf)
               + ",\"text\":\"" + escapeJsonString(seg.text) + "\""
-              + ",\"speaker_turn_next\":" + (seg.speakerTurnNext ? "true" : "false")
               + "}";
     }
     json += "]";
