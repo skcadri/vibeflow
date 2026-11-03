@@ -8,14 +8,14 @@ set(CMAKE_AUTOMOC ON)
 # Qt6
 find_package(Qt6 REQUIRED COMPONENTS Widgets Multimedia)
 
-# whisper.cpp v1.8.3 (Metal GPU + ARM NEON + Accelerate BLAS on Apple Silicon)
-set(GGML_METAL ON CACHE BOOL "" FORCE)
+# transcribe.cpp — ggml speech-to-text for Qwen3-ASR + Whisper (Metal on Apple Silicon)
 set(GGML_METAL_EMBED_LIBRARY ON CACHE BOOL "" FORCE)
-set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-set(WHISPER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(WHISPER_BUILD_SERVER OFF CACHE BOOL "" FORCE)
-add_subdirectory(deps/whisper.cpp)
+set(TRANSCRIBE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(TRANSCRIBE_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+add_subdirectory(deps/transcribe.cpp)
+# transcribe.cpp resolves its public include dir via CMAKE_SOURCE_DIR, which is
+# *our* root when it's a subdirectory — point it at its real include dir.
+target_include_directories(transcribe PUBLIC ${CMAKE_SOURCE_DIR}/deps/transcribe.cpp/include)
 
 # qt-liquid-glass
 add_subdirectory(deps/qt-liquid-glass)
@@ -39,15 +39,13 @@ add_executable(VibeFlow MACOSX_BUNDLE
 
 target_include_directories(VibeFlow PRIVATE
     ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/deps/whisper.cpp/include
-    ${CMAKE_SOURCE_DIR}/deps/whisper.cpp
-    ${CMAKE_SOURCE_DIR}/deps/whisper.cpp/examples/server
+    ${CMAKE_SOURCE_DIR}/deps/httplib
 )
 
 target_link_libraries(VibeFlow PRIVATE
     Qt6::Widgets
     Qt6::Multimedia
-    whisper
+    transcribe
     QtLiquidGlass
     "-framework CoreGraphics"
     "-framework AppKit"

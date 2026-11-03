@@ -4,7 +4,7 @@ This file is the first thing a Claude agent should read when picking up VibeFlow
 
 ## What is this project
 
-VibeFlow is a native macOS voice dictation app (whisper.cpp + Qt6 + Metal GPU on Apple Silicon). Hold Cmd+Ctrl, speak, release → text appears at the cursor. See `AGENTS.md` for the full architecture, state machine, and file-by-file reference.
+VibeFlow is a native macOS voice dictation app (transcribe.cpp running Qwen3-ASR + Whisper, Qt6, Metal GPU on Apple Silicon). Hold Cmd+Ctrl, speak, release → text appears at the cursor. See `AGENTS.md` for the full architecture, state machine, and file-by-file reference.
 
 ## Critical workflow gotchas
 
@@ -49,20 +49,20 @@ The build script's documented install line:
 rm -rf /Applications/VibeFlow.app && cp -R build/VibeFlow.app /Applications/
 ```
 
-Always quit any running VibeFlow process first (`pkill -x VibeFlow`). Then refresh the home dir model symlink if it's a symlink to the bundle:
-
-```bash
-ln -sf /Applications/VibeFlow.app/Contents/Resources/ggml-large-v3-turbo.bin \
-       ~/vibeflow/models/ggml-large-v3-turbo.bin
-```
+Always quit any running VibeFlow process first (`pkill -x VibeFlow`).
 
 ## Model file layout
 
-- **Canonical bytes** live at `/Applications/VibeFlow.app/Contents/Resources/ggml-large-v3-turbo.bin` (1.5 GB)
-- `~/vibeflow/models/ggml-large-v3-turbo.bin` is a symlink → bundle (so the dev search path in `App.cpp` resolves)
-- Project `models/` directory is gitignored; populated by `scripts/download-model.sh` or by APFS clone (`cp -c`) from the bundle when needed for a rebuild
+Two GGUF models, both required (the app refuses to start dictation if either is missing):
 
-If the bundle ever gets nuked, the home dir symlink dangles and the next build has no source for `MODEL_SRC`. Re-download via `bash scripts/download-model.sh` to recover.
+| File | Size | Used for |
+|---|---|---|
+| `Qwen3-ASR-1.7B-Q8_0.gguf` | 2.2 GB | Hotkey dictation |
+| `whisper-large-v3-turbo-Q8_0.gguf` | 0.9 GB | Urdu (Qwen has none) and the HTTP server (needs timestamps) |
+
+- **Canonical bytes** live in `~/vibeflow/models/` (real files, not symlinks). `App.cpp` searches the app bundle's `Resources/` first, then `~/vibeflow/models/`, then `~/.vibeflow/models/`.
+- Project `models/` is gitignored. Before a build, populate it with `cp -c ~/vibeflow/models/*.gguf models/` (APFS clone, no extra disk) or `bash scripts/download-model.sh`. `build.sh` clones them into the bundle.
+- Never use the old whisper.cpp `ggml-*.bin` files — transcribe.cpp only reads its own GGUFs from `huggingface.co/handy-computer`.
 
 ## Code signing
 
@@ -72,7 +72,8 @@ The build script auto-selects the `"VibeFlow Dev"` signing identity if present, 
 
 - **`AGENTS.md`** — full architecture, file-by-file reference, the audio-capture-returns-silence bug history, manual build instructions, diagnostic logging tips
 - **`scripts/build.sh`** — the canonical build pipeline (cmake → macdeployqt → rpath fix → codesign → model copy)
-- **`scripts/download-model.sh`** — pulls `ggml-large-v3-turbo.bin` from Hugging Face
+- **`scripts/download-model.sh`** — pulls both GGUF models from Hugging Face
+- **`deps/transcribe.cpp/docs/`** — engine API (`include/transcribe.h`), per-model docs, prompting rules
 
 ## About the user
 

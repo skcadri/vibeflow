@@ -1,5 +1,7 @@
 build/
 models/*.bin
+models/*.gguf
+models/*.part
 models/*.mlmodelc
 .DS_Store
 *.o

@@ -50,13 +50,17 @@ codesign --force --sign "$SIGN_IDENTITY" Contents/MacOS/VibeFlow
 codesign --force --deep --sign "$SIGN_IDENTITY" .
 cd ../..
 
-# Copy model into app bundle Resources if present
-MODEL_SRC="models/ggml-large-v3-turbo.bin"
-MODEL_DST="build/VibeFlow.app/Contents/Resources/ggml-large-v3-turbo.bin"
-if [ -f "$MODEL_SRC" ] && [ ! -f "$MODEL_DST" ]; then
-    echo "Copying model into app bundle (~1.6GB)..."
-    cp "$MODEL_SRC" "$MODEL_DST"
-    # Re-sign after adding model
+# Copy models into app bundle Resources if present (APFS clone when possible)
+for MODEL in Qwen3-ASR-1.7B-Q8_0.gguf whisper-large-v3-turbo-Q8_0.gguf; do
+    MODEL_SRC="models/$MODEL"
+    MODEL_DST="build/VibeFlow.app/Contents/Resources/$MODEL"
+    if [ -f "$MODEL_SRC" ] && [ ! -f "$MODEL_DST" ]; then
+        echo "Copying $MODEL into app bundle..."
+        cp -c "$MODEL_SRC" "$MODEL_DST" 2>/dev/null || cp "$MODEL_SRC" "$MODEL_DST"
+        MODELS_ADDED=1
+    fi
+done
+if [ -n "$MODELS_ADDED" ]; then
     codesign --force --deep --sign "$SIGN_IDENTITY" build/VibeFlow.app
 fi
 

@@ -54,7 +54,6 @@ void App::initialize()
         fprintf(stderr, "[INFO] App: input mode changed to %s\n", useTypeMode ? "type" : "paste");
         fflush(stderr);
     });
-    connect(m_trayIcon, &TrayIcon::translateModeChanged, m_transcriber, &Transcriber::setTranslate);
     connect(m_trayIcon, &TrayIcon::keepMicActiveChanged, m_audioCapture, &AudioCapture::setKeepActive);
     connect(m_trayIcon, &TrayIcon::serverModeChanged, this, [this](bool enabled) {
         const int port = 8080;
@@ -116,40 +115,42 @@ void App::initialize()
     // is first pressed (avoids ~2s delay from device enumeration + Core Audio init).
     QTimer::singleShot(0, m_audioCapture, &AudioCapture::initDevice);
 
-    updateTranscriberPrompt();
+    updateTranscriberVocabulary();
     loadModelAsync();
 }
 
 void App::loadModelAsync()
 {
-    // Search for model in multiple locations
-    QStringList searchPaths = {
-        QApplication::applicationDirPath() + "/../Resources/ggml-large-v3-turbo.bin",  // Inside .app bundle
-        QDir::homePath() + "/vibeflow/models/ggml-large-v3-turbo.bin",                 // Dev location
-        QDir::homePath() + "/.vibeflow/models/ggml-large-v3-turbo.bin",               // User config dir
+    // Each model is looked up in the app bundle, then the dev and user dirs.
+    const QStringList dirs = {
+        QApplication::applicationDirPath() + "/../Resources",
+        QDir::homePath() + "/vibeflow/models",
+        QDir::homePath() + "/.vibeflow/models",
+    };
+    auto find = [&dirs](const QString &name) -> QString {
+        for (const auto &dir : dirs) {
+            if (QFile::exists(dir + "/" + name))
+                return dir + "/" + name;
+        }
+        return {};
     };
 
-    QString modelPath;
-    for (const auto &path : searchPaths) {
-        if (QFile::exists(path)) {
-            modelPath = path;
-            break;
-        }
-    }
-
-    if (modelPath.isEmpty()) {
-        qWarning() << "Model not found in any search path";
+    const QString qwenName = QStringLiteral("Qwen3-ASR-1.7B-Q8_0.gguf");
+    const QString whisperName = QStringLiteral("whisper-large-v3-turbo-Q8_0.gguf");
+    const QString qwenPath = find(qwenName);
+    const QString whisperPath = find(whisperName);
+    if (qwenPath.isEmpty() || whisperPath.isEmpty()) {
+        const QString missing = qwenPath.isEmpty() ? qwenName : whisperName;
+        qWarning() << "Model not found in any search path:" << missing;
         m_trayIcon->showMessage("VibeFlow",
-            "Model not found. Place ggml-large-v3-turbo.bin in ~/vibeflow/models/");
+            "Model not found. Run scripts/download-model.sh or place " + missing + " in ~/vibeflow/models/");
         return;
     }
 
-    qInfo() << "Using model:" << modelPath;
+    m_trayIcon->showMessage("VibeFlow", "Loading models...");
 
-    m_trayIcon->showMessage("VibeFlow", "Loading model...");
-
-    QThread *thread = QThread::create([this, modelPath]() {
-        m_transcriber->loadModel(modelPath);
+    QThread *thread = QThread::create([this, qwenPath, whisperPath]() {
+        m_transcriber->loadModels(qwenPath, whisperPath);
     });
     connect(thread, &QThread::finished, thread, &QThread::deleteLater);
     thread->start();
@@ -323,10 +324,9 @@ void App::transcribeAsync()
     thread->start();
 }
 
-void App::updateTranscriberPrompt()
+void App::updateTranscriberVocabulary()
 {
-    QString prompt = m_settings->buildPromptString();
-    m_transcriber->setInitialPrompt(prompt);
+    m_transcriber->setVocabulary(m_settings->vocabulary());
 }
 
 void App::showRecentTranscriptions()
@@ -341,6 +341,5 @@ void App::showVocabulary()
     auto *dlg = new VocabularyDialog(m_settings);
     dlg->setAttribute(Qt::WA_DeleteOnClose);
     dlg->exec();
-    // Refresh prompt after vocabulary changes
-    updateTranscriberPrompt();
+    updateTranscriberVocabulary();
 }

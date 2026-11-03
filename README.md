@@ -1,6 +1,6 @@
 # VibeFlow
 
-Native macOS voice dictation powered by [whisper.cpp](https://github.com/ggml-org/whisper.cpp). Hold **Cmd+Ctrl** to record, release to transcribe and paste at the cursor. Built with C++/Qt6 and Metal GPU acceleration on Apple Silicon.
+Native macOS voice dictation powered by [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) running [Qwen3-ASR](https://huggingface.co/Qwen/Qwen3-ASR-1.7B), with Whisper for Urdu. Hold **Cmd+Ctrl** to record, release to transcribe and paste at the cursor. Built with C++/Qt6 and Metal GPU acceleration on Apple Silicon.
 
 Inspired by [Wispr Flow](https://wisprflow.com).
 
@@ -27,14 +27,13 @@ The agent will install Homebrew, build the app, copy it to `/Applications`, and 
 ## Features
 
 - **Hold-to-dictate**: Hold Cmd+Ctrl to record, release to transcribe and paste
-- **GPU-accelerated**: whisper.cpp large-v3-turbo on Metal — same 99-language accuracy as large-v3, ~8× faster decode, half the disk (1.6 GB vs 3 GB)
-- **Multilingual**: Automatic language detection (Hindi audio is forced to Urdu transcription via a built-in suppression pass)
+- **GPU-accelerated**: Qwen3-ASR 1.7B on Metal — among the most accurate open models on the Open ASR Leaderboard (late 2026); an 11 s clip transcribes in ~0.3 s on a Mac Studio
+- **Multilingual**: Qwen3-ASR auto-detects 30 languages. Urdu (which Qwen doesn't support) is routed to Whisper large-v3-turbo
 - **Two insertion modes**:
   - **Paste mode** — copies text to clipboard, simulates Cmd+V (default; works everywhere)
   - **Type at Cursor** — Accessibility API text insertion with a paste fallback for apps like Terminal.app
-- **Translate to English** — toggle to transcribe any source language directly into English
 - **Recent Transcriptions** — browseable history of recent dictations
-- **Custom Vocabulary** — user-supplied terms (medical jargon, names, etc.) injected as prompt context to bias whisper's decoding
+- **Custom Vocabulary** — user-supplied terms (medical jargon, names, etc.) passed to the model to bias spelling
 - **Keep Microphone Active** — keep the mic warm to skip the ~2 s Core Audio wake-up delay (helpful with webcam mics)
 - **HTTP transcription server** — optional embedded server on `127.0.0.1:8080` for programmatic use
 - **Frosted glass UI**: Floating waveform bubble with liquid glass effect
@@ -50,7 +49,7 @@ Hold Cmd+Ctrl → frosted glass bubble appears at the bottom of the screen with 
 
 - macOS 14+ (Sonoma or later) — tested on macOS Tahoe (26.x)
 - Apple Silicon (M1/M2/M3/M4)
-- ~5 GB free disk space (1.6 GB model + Qt6 + build artifacts)
+- ~8 GB free disk space (3.1 GB of models + Qt6 + build artifacts)
 
 For installation, see **[INSTALL.md](INSTALL.md)**.
 
@@ -62,14 +61,14 @@ For installation, see **[INSTALL.md](INSTALL.md)**.
 │                    (state machine controller)                     │
 │              Idle ←→ Recording ←→ Processing                      │
 ├──────────┬──────────┬───────────────┬──────────┬─────────────────┤
-│ Hotkey   │ Audio    │ Whisper       │ HTTP     │ UI               │
-│ Monitor  │ Capture  │ Transcriber   │ Server   │                  │
+│ Hotkey   │ Audio    │ Transcriber   │ HTTP     │ UI               │
+│ Monitor  │ Capture  │               │ Server   │                  │
 │          │          │               │ (opt-in) │                  │
-│ CGEvent  │ QAudio   │ whisper.cpp   │ QTcpSrv  │ ┌─────────────┐  │
-│ Flags    │ Source   │ (Metal GPU)   │ on 8080  │ │ GlassBubble │  │
-│ polling  │ pull-mode│ + vocab prompt│          │ │  Waveform   │  │
-│ @60Hz    │ Int16Mono│ + Hindi→Urdu  │          │ │  TrayIcon   │  │
-│          │ 16kHz    │   suppression │          │ │  Dialogs    │  │
+│ CGEvent  │ QAudio   │ transcribe.cpp│ QTcpSrv  │ ┌─────────────┐  │
+│ Flags    │ Source   │ Qwen3-ASR     │ on 8080  │ │ GlassBubble │  │
+│ polling  │ pull-mode│ + vocabulary  │ (Whisper)│ │  Waveform   │  │
+│ @60Hz    │ Int16Mono│ Urdu→Whisper  │          │ │  TrayIcon   │  │
+│          │ 16kHz    │ (Metal GPU)   │          │ │  Dialogs    │  │
 └──────────┴──────────┴───────────────┴──────────┴─────────────────┘
             macOS APIs                            Qt6 Widgets
        (CoreGraphics, AppKit, AX)
@@ -92,7 +91,7 @@ vibeflow/
 ├── src/
 │   ├── main.cpp                    # Entry point
 │   ├── App.h / App.cpp             # State machine controller
-│   ├── Transcriber.h / .cpp        # whisper.cpp wrapper (model load + transcribe)
+│   ├── Transcriber.h / .cpp        # transcribe.cpp wrapper (Qwen3-ASR + Whisper)
 │   ├── TranscriptionServer.h/.cpp  # Optional HTTP server on 127.0.0.1:8080
 │   ├── AudioCapture.h / .cpp       # Mic recording (pull-mode QAudioSource)
 │   ├── HotkeyMonitor.h / .mm       # Cmd+Ctrl detection (CGEventSourceFlagsState polling)
@@ -106,7 +105,8 @@ vibeflow/
 │       ├── RecentTranscriptionsDialog.h/.cpp  # History browser
 │       └── VocabularyDialog.h/.cpp # Custom-term editor
 ├── deps/
-│   ├── whisper.cpp/                # Git submodule (v1.8.3+)
+│   ├── transcribe.cpp/             # Git submodule (speech engine)
+│   ├── httplib/                    # Vendored single-header HTTP server
 │   └── qt-liquid-glass/            # Git submodule
 ├── resources/
 │   └── Info.plist                  # macOS bundle metadata
@@ -114,7 +114,8 @@ vibeflow/
 │   ├── build.sh                    # Build + bundle + sign + model-copy pipeline
 │   └── download-model.sh           # Model download helper (Hugging Face)
 └── models/                         # Model files (gitignored)
-    └── ggml-large-v3-turbo.bin     # 1.6 GB
+    ├── Qwen3-ASR-1.7B-Q8_0.gguf    # 2.2 GB
+    └── whisper-large-v3-turbo-Q8_0.gguf  # 0.9 GB
 ```
 
 ## Tray Menu
@@ -122,7 +123,6 @@ vibeflow/
 Right-click the menu bar icon to access:
 
 - **Type at Cursor** — toggle insertion mode (paste vs AX-typing)
-- **Translate to English** — toggle direct-to-English transcription
 - **Keep Microphone Active** — toggle mic warm-keep
 - **Enable Transcription Server** — toggle the HTTP server on `127.0.0.1:8080`
 - **Recent Transcriptions…** — browse history
@@ -151,7 +151,7 @@ The resulting app bundle is at `build/VibeFlow.app`.
 2. `macdeployqt` to bundle Qt frameworks
 3. `install_name_tool` to fix Homebrew rpath references
 4. `codesign` — prefers the stable `"VibeFlow Dev"` identity if present in keychain, falls back to ad-hoc (`-`). Stable signing helps macOS persist TCC permissions across rebuilds. Override with `CODESIGN_IDENTITY=…` env var.
-5. Copy the whisper model into `Contents/Resources/` (if present in `models/`)
+5. Clone both GGUF models into `Contents/Resources/` (if present in `models/`)
 
 ## Troubleshooting
 
@@ -160,7 +160,7 @@ The resulting app bundle is at `build/VibeFlow.app`.
   ```bash
   /Applications/VibeFlow.app/Contents/MacOS/VibeFlow 2>&1 | tee /tmp/vf.log
   ```
-- **Hindi/Urdu transcription quality** — Whisper sometimes auto-detects Hindi for Urdu audio. VibeFlow re-runs transcription with Urdu forced when this happens; see `src/Transcriber.cpp`.
+- **Urdu** — Qwen3-ASR has no Urdu and writes it as Hindi (Devanagari). Any Devanagari output is re-transcribed by Whisper with Urdu forced; see `src/Transcriber.cpp`.
 - **More detail** — `AGENTS.md` has the full file-by-file reference and historical bug diagnoses.
 
 ## License

@@ -10,7 +10,7 @@ Either way takes 10–25 minutes depending on your internet speed.
 **Requirements:**
 - macOS 14+ (Sonoma or later)
 - Apple Silicon Mac (M1/M2/M3/M4) — Intel Macs are not supported
-- ~5 GB free disk space (1.6 GB model + Qt6 + build artifacts)
+- ~8 GB free disk space (3.1 GB of models + Qt6 + build artifacts)
 
 ---
 
@@ -29,7 +29,7 @@ Specifically:
 2. Install Homebrew if missing.
 3. brew install qt@6 cmake git
 4. Clone https://github.com/skcadri/vibeflow.git with --recurse-submodules to ~/vibeflow-src
-5. Run `bash scripts/download-model.sh` to fetch the 1.6 GB whisper model
+5. Run `bash scripts/download-model.sh` to fetch the two speech models (~3.1 GB)
 6. Run `bash scripts/build.sh` to build and code-sign
 7. Quit any running VibeFlow, then install with:
    rm -rf /Applications/VibeFlow.app && cp -R build/VibeFlow.app /Applications/
@@ -69,7 +69,7 @@ SRC=~/vibeflow-src
 [ -d "$SRC" ] || git clone --recurse-submodules https://github.com/skcadri/vibeflow.git "$SRC"
 cd "$SRC"
 
-# 5. Download whisper large-v3-turbo (~1.6 GB, one-time)
+# 5. Download Qwen3-ASR + Whisper models (~3.1 GB, one-time)
 bash scripts/download-model.sh
 
 # 6. Build, bundle, code-sign
@@ -136,6 +136,6 @@ Then relaunch and grant permissions again. Without this, you'll see silence from
   ```bash
   /Applications/VibeFlow.app/Contents/MacOS/VibeFlow 2>&1 | tee /tmp/vf.log
   ```
-- **Whisper.cpp submodule out of date** — `git submodule update --init --recursive` from `~/vibeflow-src`.
+- **transcribe.cpp submodule out of date** — `git submodule update --init --recursive` from `~/vibeflow-src`.
 
 More detail in [`AGENTS.md`](AGENTS.md) (architecture, historical bug diagnoses) and [`CLAUDE.md`](CLAUDE.md) (agent workflow guide).
