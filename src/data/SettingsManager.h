@@ -28,5 +28,9 @@ public:
     void addWord(const QString &word);
     void removeWord(const QString &word);
 
+    // Live preview text bubble while dictating (on by default)
+    bool livePreviewEnabled() const;
+    void setLivePreviewEnabled(bool enabled);
+
     static constexpr int MaxHistory = 50;
 };

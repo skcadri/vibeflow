@@ -49,6 +49,8 @@ public:
 
 signals:
     void levelChanged(float rmsLevel);
+    // Newest audio while recording, 16 kHz mono float, ~30 times a second.
+    void audioChunk(const QVector<float> &samples);
 
 private slots:
     void onTimerTick();
@@ -56,6 +58,7 @@ private slots:
 
 private:
     void computeRms(const char *data, qint64 len);
+    QVector<float> convertTo16kMono(qint64 fromSample) const;
     void destroySource();
 
     QAudioSource *m_source = nullptr;
@@ -65,6 +68,7 @@ private:
     QMediaDevices *m_mediaDevices = nullptr;
     QAudioFormat m_captureFormat;
     float m_currentRms = 0.0f;
+    qint64 m_liveSamplesSent = 0; // 16 kHz samples already emitted via audioChunk
     bool m_deviceReady = false;
     bool m_keepActive = false;
 };

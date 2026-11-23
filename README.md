@@ -49,7 +49,7 @@ Hold Cmd+Ctrl → frosted glass bubble appears at the bottom of the screen with 
 
 - macOS 14+ (Sonoma or later) — tested on macOS Tahoe (26.x)
 - Apple Silicon (M1/M2/M3/M4)
-- ~8 GB free disk space (3.1 GB of models + Qt6 + build artifacts)
+- ~9 GB free disk space (3.8 GB of models + Qt6 + build artifacts)
 
 For installation, see **[INSTALL.md](INSTALL.md)**.
 

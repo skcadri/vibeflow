@@ -20,6 +20,10 @@ public:
     void setState(State state);
     void hideImmediately();
 
+    // Shows a frameless overlay window above every other window, on all Spaces,
+    // ignoring the mouse. Shared with LiveTextBubble.
+    static void showAboveEverything(QWidget *w);
+
     qreal bubbleOpacity() const { return m_opacity; }
     void setBubbleOpacity(qreal opacity);
 

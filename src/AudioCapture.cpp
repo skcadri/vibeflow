@@ -195,6 +195,7 @@ void AudioCapture::start()
 
     m_audioBuffer->clear();
     m_currentRms = 0.0f;
+    m_liveSamplesSent = 0;
 
     // Drain any stale data that accumulated while suspended.
     if (m_inputDevice) {
@@ -318,26 +319,28 @@ void AudioCapture::onTimerTick()
 
     emit levelChanged(m_currentRms);
     m_currentRms *= 0.8f; // Decay for smooth animation
+
+    QVector<float> fresh = convertTo16kMono(m_liveSamplesSent);
+    if (!fresh.isEmpty()) {
+        m_liveSamplesSent += fresh.size();
+        emit audioChunk(fresh);
+    }
 }
 
-QVector<float> AudioCapture::getRecordedAudio() const
+// Converts captured audio to 16 kHz mono float, starting at 16 kHz sample
+// `fromSample`. Used for the whole recording on release and, while recording,
+// for just the newest samples (live preview).
+QVector<float> AudioCapture::convertTo16kMono(qint64 fromSample) const
 {
-    const QByteArray &raw = m_audioBuffer->buffer();
+    const QByteArray raw = m_audioBuffer->buffer();
+    const int bytesPerSample = m_captureFormat.bytesPerSample();
+    const int channels = m_captureFormat.channelCount();
+    if (bytesPerSample <= 0 || channels <= 0)
+        return {};
+    const qint64 totalFrames = raw.size() / (bytesPerSample * channels);
 
-    int bytesPerSample = m_captureFormat.bytesPerSample();
-    int channels = m_captureFormat.channelCount();
-    int captureRate = m_captureFormat.sampleRate();
-    int totalFrames = raw.size() / (bytesPerSample * channels);
-
-    fprintf(stderr, "[INFO] AudioCapture: converting %d frames from %dHz %dch to 16kHz mono\n",
-            totalFrames, captureRate, channels);
-    fflush(stderr);
-
-    // Step 1: Convert to mono float32
-    QVector<float> monoFloat(totalFrames);
-
-    auto sampleAt = [&](int frame, int ch) -> float {
-        const int idx = frame * channels + ch;
+    auto sampleAt = [&](qint64 frame, int ch) -> float {
+        const qint64 idx = frame * channels + ch;
         switch (m_captureFormat.sampleFormat()) {
         case QAudioFormat::UInt8: {
             const uint8_t *samples = reinterpret_cast<const uint8_t *>(raw.constData());
@@ -362,47 +365,50 @@ QVector<float> AudioCapture::getRecordedAudio() const
 
     // Use the loudest channel per frame instead of averaging channels.
     // This avoids phase-cancellation and helps with very low-level stereo sources.
-    for (int i = 0; i < totalFrames; i++) {
+    auto monoAt = [&](qint64 frame) -> float {
         float selected = 0.0f;
         float selectedAbs = -1.0f;
         for (int ch = 0; ch < channels; ch++) {
-            const float v = sampleAt(i, ch);
+            const float v = sampleAt(frame, ch);
             const float av = std::fabs(v);
             if (av > selectedAbs) {
                 selectedAbs = av;
                 selected = v;
             }
         }
-        monoFloat[i] = selected;
-    }
+        return selected;
+    };
 
-    // Step 2: Resample to 16kHz if needed (simple linear interpolation)
+    // Resample to 16kHz (simple linear interpolation; ratio 1 copies frames as-is)
+    const double ratio = (double)m_captureFormat.sampleRate() / 16000.0;
+    const qint64 outputFrames = (qint64)(totalFrames / ratio);
     QVector<float> output;
-    if (captureRate == 16000) {
-        output = monoFloat;
-    } else {
-        double ratio = (double)captureRate / 16000.0;
-        int outputFrames = (int)(totalFrames / ratio);
-        output.resize(outputFrames);
+    if (fromSample >= outputFrames)
+        return output;
+    output.resize(outputFrames - fromSample);
 
-        for (int i = 0; i < outputFrames; i++) {
-            double srcPos = i * ratio;
-            int srcIdx = (int)srcPos;
-            float frac = (float)(srcPos - srcIdx);
-
-            if (srcIdx + 1 < totalFrames) {
-                output[i] = monoFloat[srcIdx] * (1.0f - frac) + monoFloat[srcIdx + 1] * frac;
-            } else if (srcIdx < totalFrames) {
-                output[i] = monoFloat[srcIdx];
-            }
-        }
-
-        fprintf(stderr, "[INFO] AudioCapture: resampled %d -> %d frames (16kHz)\n",
-                totalFrames, outputFrames);
-        fflush(stderr);
+    for (qint64 i = fromSample; i < outputFrames; i++) {
+        const double srcPos = i * ratio;
+        const qint64 srcIdx = (qint64)srcPos;
+        const float frac = (float)(srcPos - srcIdx);
+        float v = 0.0f;
+        if (srcIdx + 1 < totalFrames)
+            v = monoAt(srcIdx) * (1.0f - frac) + monoAt(srcIdx + 1) * frac;
+        else if (srcIdx < totalFrames)
+            v = monoAt(srcIdx);
+        output[i - fromSample] = v;
     }
+    return output;
+}
 
-    // Step 3: Automatic gain for very quiet sources (e.g. low-gain external USB mics).
+QVector<float> AudioCapture::getRecordedAudio() const
+{
+    QVector<float> output = convertTo16kMono(0);
+    fprintf(stderr, "[INFO] AudioCapture: converted recording to %lld samples at 16kHz mono (capture %dHz %dch)\n",
+            (long long)output.size(), m_captureFormat.sampleRate(), m_captureFormat.channelCount());
+    fflush(stderr);
+
+    // Automatic gain for very quiet sources (e.g. low-gain external USB mics).
     float peak = 0.0f;
     for (float s : output) {
         peak = qMax(peak, std::fabs(s));

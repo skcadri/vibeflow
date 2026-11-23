@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QPixmap>
 #include <QPainter>
+#include <QSignalBlocker>
 
 TrayIcon::TrayIcon(QObject *parent)
     : QObject(parent)
@@ -49,6 +50,11 @@ TrayIcon::TrayIcon(QObject *parent)
     m_keepMicActiveAction->setChecked(false);
     connect(m_keepMicActiveAction, &QAction::toggled, this, &TrayIcon::keepMicActiveChanged);
 
+    m_livePreviewAction = m_menu->addAction("Show Live Text While Speaking");
+    m_livePreviewAction->setCheckable(true);
+    m_livePreviewAction->setChecked(true);
+    connect(m_livePreviewAction, &QAction::toggled, this, &TrayIcon::livePreviewChanged);
+
     m_serverAction = m_menu->addAction("Enable Transcription Server");
     m_serverAction->setCheckable(true);
     m_serverAction->setChecked(false);
@@ -91,4 +97,10 @@ void TrayIcon::setServerPort(int port)
     } else {
         m_serverAction->setText("Enable Transcription Server");
     }
+}
+
+void TrayIcon::setLivePreviewChecked(bool checked)
+{
+    QSignalBlocker block(m_livePreviewAction);
+    m_livePreviewAction->setChecked(checked);
 }

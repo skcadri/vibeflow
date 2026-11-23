@@ -4,7 +4,7 @@ This file helps AI coding agents (and human contributors) navigate and understan
 
 ## What is VibeFlow?
 
-A native macOS voice dictation app. Hold **Cmd+Ctrl** to record, release to transcribe with transcribe.cpp (Qwen3-ASR 1.7B on Metal GPU, Whisper large-v3-turbo for Urdu), and paste the text at the cursor position. A frosted glass waveform bubble appears at the bottom of the screen during recording.
+A native macOS voice dictation app. Hold **Cmd+Ctrl** to record, release to transcribe with transcribe.cpp (Qwen3-ASR 1.7B on Metal GPU, Whisper large-v3-turbo for Urdu), and paste the text at the cursor position. A frosted glass waveform bubble appears at the bottom of the screen during recording, with an optional live-text panel above it (Nemotron streaming model) showing words as you speak.
 
 Think of it as an open-source alternative to [Wispr Flow](https://wisprflow.com).
 
@@ -15,7 +15,7 @@ Think of it as an open-source alternative to [Wispr Flow](https://wisprflow.com)
 | Language | C++17 / Objective-C++ |
 | UI framework | Qt 6 (Widgets + Multimedia) |
 | Glass effect | [qt-liquid-glass](https://github.com/fsalinas26/qt-liquid-glass) |
-| Transcription | [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) (ggml, Metal GPU): Qwen3-ASR 1.7B + Whisper large-v3-turbo |
+| Transcription | [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) (ggml, Metal GPU): Qwen3-ASR 1.7B + Whisper large-v3-turbo; Nemotron Speech Streaming 0.6B for live preview |
 | Audio capture | Qt Multimedia (`QAudioSource`) |
 | Global hotkey | `CGEventSourceFlagsState` polling (60Hz) |
 | Paste at cursor | `NSPasteboard` + `CGEventPost` (Cmd+V simulation) |
@@ -42,6 +42,7 @@ The app is a simple 3-state machine managed by `App.cpp`:
 ```
 HotkeyMonitor::activated()
   → App::onHotkeyActivated()
+    → LivePreview::start()          [if "Show Live Text" is on]
     → AudioCapture::start()
     → GlassBubble::setState(Recording)
 
@@ -49,16 +50,23 @@ AudioCapture::levelChanged(float rms)
   → GlassBubble::updateLevel()
     → WaveformWidget::updateLevel()
 
+AudioCapture::audioChunk(16 kHz samples, ~30/s)
+  → LivePreview::feed()             [own QThread, Nemotron stream]
+    → LivePreview::textChanged(committed, tentative)
+      → LiveTextBubble::setText()
+
 HotkeyMonitor::deactivated()
   → App::onHotkeyDeactivated()
     → AudioCapture::stop()
+    → LivePreview::stop()           [live text stays up while Qwen runs]
     → GlassBubble::setState(Processing)
     → Transcriber::transcribe() [runs in QThread]
 
 Transcriber completes
   → App::onTranscriptionFinished(QString text)
+    → GlassBubble::hideImmediately()
+    → LiveTextBubble::hideNow()        [never linger after release: it sits over what you click next]
     → TextPaster::paste(text)
-    → GlassBubble::setState(Hidden)
 ```
 
 ### Component Ownership
@@ -67,12 +75,14 @@ Transcriber completes
 main.cpp
   └─ App (QObject, stack-allocated)
        ├─ Transcriber (QObject child)
+       ├─ LivePreview (no parent; moved to its own QThread, deleted when it finishes)
        ├─ AudioCapture (QObject child)
        │    └─ AudioBuffer (custom QIODevice for pull-mode recording)
        ├─ HotkeyMonitor (QObject child)
        │    └─ QTimer (60Hz modifier key polling)
        ├─ GlassBubble (QWidget, top-level window)
        │    └─ WaveformWidget (child widget)
+       ├─ LiveTextBubble (QWidget, top-level window anchored above GlassBubble)
        └─ TrayIcon (QObject child)
             └─ QSystemTrayIcon
 ```
@@ -91,8 +101,9 @@ main.cpp
 
 | File | Purpose | Key Details |
 |------|---------|-------------|
-| `src/AudioCapture.h/.cpp` | Microphone recording | **Pull-mode** `QAudioSource` → custom `AudioBuffer` QIODevice. Handles format negotiation (prefers 16kHz mono Int16, falls back to device preferred format). Resamples to 16kHz mono float32 for the transcriber. Emits RMS levels at 30fps for waveform |
+| `src/AudioCapture.h/.cpp` | Microphone recording | **Pull-mode** `QAudioSource` → custom `AudioBuffer` QIODevice. Handles format negotiation (prefers 16kHz mono Int16, falls back to device preferred format). Resamples to 16kHz mono float32 for the transcriber (`convertTo16kMono`, shared by the final pass and the live chunks). Emits RMS levels at 30fps for waveform and `audioChunk` (just the new samples) at the same rate for live preview |
 | `src/Transcriber.h/.cpp` | transcribe.cpp wrapper | Loads both models async in a QThread. `transcribe()` (hotkey) runs **Qwen3-ASR**; if the output contains any Devanagari (Qwen has no Urdu, so Urdu comes back as Hindi script) it re-runs **Whisper** with `language="ur"`. `transcribeWithSegments()` (HTTP server) runs **Whisper** because Qwen3-ASR has no timestamps. Vocabulary goes through transcribe.cpp's `vocabulary` field, which formats it per model — never hand-build a prompt string from it. Every segment is cleaned via `isHallucination()` and `stripSpeakerLabel()` (see note below) |
+| `src/LivePreview.h/.cpp` | Live text while speaking | Separate **Nemotron Speech Streaming 0.6B** session (English-only, `transcribe_stream_*` API, lookahead 6 = 480 ms) on its own QThread. **Preview only** — never paste its text; Qwen's result is what gets pasted. Its model is optional: missing file = no live text, everything else unchanged. Qwen3-ASR can't stream (transcribe.cpp marks it unsupported), so don't try to drive the preview from `Transcriber` |
 | `src/TextPaster.h/.mm` | Clipboard + paste | Sets `NSPasteboard`, waits 50ms, simulates Cmd+V via `CGEventPost` |
 
 **Speaker-label hallucination note:** Whisper invents fake speaker labels (e.g. `Tim Cynova:`, `Artyaz, Mathias, Salman, Oswego, :`) at the start of any segment. The trigger was a vocabulary prompt shaped like `Vocabulary: name, name, …` — Whisper copies the prompt's shape. transcribe.cpp independently dropped its `Glossary: …` vocabulary header for the same reason (upstream commit `8facde6`). Rules:
@@ -112,14 +123,15 @@ main.cpp
 |------|---------|-------------|
 | `src/ui/GlassBubble.h/.mm` | Frosted glass floating pill | 300×56px, frameless, `NSScreenSaverWindowLevel` (always on top). Uses `QtLiquidGlass::Material::Hud`. Positioned above Dock via `availableGeometry()`. Fade in/out via `QPropertyAnimation` on window opacity |
 | `src/ui/WaveformWidget.h/.cpp` | 24-bar animated equalizer | Bars: 4px wide, 2px gap, white 80% opacity. Height: 4–40px, smooth LERP (factor 0.3). 30fps QTimer animation. Idle bars at ~4px, peaks at 40px |
-| `src/ui/TrayIcon.h/.cpp` | Menu bar icon | Programmatic mic glyph (QPainterPath), set as NSImage template. Menu: "About VibeFlow" + "Quit" |
+| `src/ui/LiveTextBubble.h/.cpp` | Live-text glass panel | Sits above the pill; width 45% of the screen, grows upward with the text to a third of the screen height, then oldest lines clip off the top. Settled words bright, still-changing words dim. Look-and-feel knobs are the constants at the top of the file. Reuses `GlassBubble::showAboveEverything()` for window level/Spaces |
+| `src/ui/TrayIcon.h/.cpp` | Menu bar icon | Programmatic mic glyph (QPainterPath), set as NSImage template. Toggles: Type at Cursor, Keep Microphone Active, **Show Live Text While Speaking** (persisted in `SettingsManager`, default on), Transcription Server |
 
 ### Build & Config
 
 | File | Purpose |
 |------|---------|
 | `scripts/build.sh` | Full pipeline: cmake → build → macdeployqt → rpath fix → codesign → model copy |
-| `scripts/download-model.sh` | Downloads both GGUF models (~3.1 GB) into `models/` |
+| `scripts/download-model.sh` | Downloads the GGUF models (~3.8 GB) into `models/` |
 | `resources/Info.plist` | Bundle metadata. `LSUIElement=true` (no Dock icon). `NSMicrophoneUsageDescription` for TCC prompt |
 | `.gitmodules` | Submodules: `deps/transcribe.cpp` (pinned past v0.4.1 for the vocabulary-header fix), `deps/qt-liquid-glass`. `deps/httplib/httplib.h` is vendored (single header, MIT) for the HTTP server |
 
@@ -163,7 +175,7 @@ brew install qt@6 cmake
 git clone --recurse-submodules https://github.com/skcadri/vibeflow.git
 cd vibeflow
 
-# Download Qwen3-ASR + Whisper GGUF models (~3.1GB)
+# Download Qwen3-ASR + Whisper + Nemotron (live text) GGUF models (~3.8GB)
 bash scripts/download-model.sh
 ```
 

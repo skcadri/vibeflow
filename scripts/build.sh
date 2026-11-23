@@ -51,7 +51,7 @@ codesign --force --deep --sign "$SIGN_IDENTITY" .
 cd ../..
 
 # Copy models into app bundle Resources if present (APFS clone when possible)
-for MODEL in Qwen3-ASR-1.7B-Q8_0.gguf whisper-large-v3-turbo-Q8_0.gguf; do
+for MODEL in Qwen3-ASR-1.7B-Q8_0.gguf whisper-large-v3-turbo-Q8_0.gguf nemotron-speech-streaming-en-0.6b-Q8_0.gguf; do
     MODEL_SRC="models/$MODEL"
     MODEL_DST="build/VibeFlow.app/Contents/Resources/$MODEL"
     if [ -f "$MODEL_SRC" ] && [ ! -f "$MODEL_DST" ]; then

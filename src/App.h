@@ -4,6 +4,8 @@
 #include <QThread>
 
 class Transcriber;
+class LivePreview;
+class LiveTextBubble;
 class AudioCapture;
 class HotkeyMonitor;
 class GlassBubble;
@@ -44,6 +46,10 @@ private:
     AudioCapture *m_audioCapture = nullptr;
     HotkeyMonitor *m_hotkeyMonitor = nullptr;
     GlassBubble *m_bubble = nullptr;
+    LivePreview *m_livePreview = nullptr;   // lives on m_liveThread
+    QThread *m_liveThread = nullptr;
+    LiveTextBubble *m_liveText = nullptr;
+    bool m_livePreviewOn = true;
     TrayIcon *m_trayIcon = nullptr;
     SettingsManager *m_settings = nullptr;
     TranscriptionServer *m_server = nullptr;
