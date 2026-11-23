@@ -51,18 +51,26 @@ rm -rf /Applications/VibeFlow.app && cp -R build/VibeFlow.app /Applications/
 
 Always quit any running VibeFlow process first (`pkill -x VibeFlow`).
 
+To capture the app's stderr log (hotkey ACTIVATED/DEACTIVATED with modifier flags, model loads, paste results), launch it with `open --stderr ~/vibeflow/logs/vibeflow.log /Applications/VibeFlow.app`. Don't run the binary from a shell for this: macOS then attributes mic/Accessibility permission to the terminal. For when recording started/stopped in the past, `/usr/bin/log show --predicate 'process == "VibeFlow" AND eventMessage CONTAINS "setPlayState"'` lists every mic start/stop (zsh shadows `log` with a builtin; use the full path).
+
 ## Model file layout
 
-Two GGUF models, both required (the app refuses to start dictation if either is missing):
+Three GGUF models. The first two are required (the app refuses to start dictation if either is missing); the third is optional:
 
 | File | Size | Used for |
 |---|---|---|
 | `Qwen3-ASR-1.7B-Q8_0.gguf` | 2.2 GB | Hotkey dictation |
 | `whisper-large-v3-turbo-Q8_0.gguf` | 0.9 GB | Urdu (Qwen has none) and the HTTP server (needs timestamps) |
+| `nemotron-speech-streaming-en-0.6b-Q8_0.gguf` | 0.7 GB | Live text panel while speaking (preview only, English-only). Missing = no live text, nothing else changes |
 
 - **Canonical bytes** live in `~/vibeflow/models/` (real files, not symlinks). `App.cpp` searches the app bundle's `Resources/` first, then `~/vibeflow/models/`, then `~/.vibeflow/models/`.
 - Project `models/` is gitignored. Before a build, populate it with `cp -c ~/vibeflow/models/*.gguf models/` (APFS clone, no extra disk) or `bash scripts/download-model.sh`. `build.sh` clones them into the bundle.
 - Never use the old whisper.cpp `ggml-*.bin` files — transcribe.cpp only reads its own GGUFs from `huggingface.co/handy-computer`.
+
+## Live text preview
+
+- It's a preview: the pasted text always comes from Qwen's full pass on release. Never paste or save `LivePreview` output.
+- Off switch for the user: tray menu → **Show Live Text While Speaking** (persisted). Use that before touching code when the user reports a live-text problem.
 
 ## Code signing
 

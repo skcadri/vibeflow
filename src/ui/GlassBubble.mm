@@ -90,21 +90,7 @@ void GlassBubble::setState(State state)
         m_statusLabel->setText("Listening...");
         m_waveform->reset();
         positionBottomCenter();
-        show();
-        raise();
-        // Set NSWindow level above everything (including other always-on-top windows)
-        if (windowHandle()) {
-            NSView *nsView = (__bridge NSView *)reinterpret_cast<void *>(windowHandle()->winId());
-            if (nsView && nsView.window) {
-                [nsView.window setLevel:NSScreenSaverWindowLevel];
-                [nsView.window setIgnoresMouseEvents:YES];
-                [nsView.window orderWindow:NSWindowAbove relativeTo:0];
-                [nsView.window setCollectionBehavior:
-                    NSWindowCollectionBehaviorCanJoinAllSpaces |
-                    NSWindowCollectionBehaviorStationary |
-                    NSWindowCollectionBehaviorFullScreenAuxiliary];
-            }
-        }
+        showAboveEverything(this);
         fadeIn();
         break;
 
@@ -113,6 +99,25 @@ void GlassBubble::setState(State state)
         m_statusLabel->setText("Transcribing...");
         m_waveform->freeze();
         break;
+    }
+}
+
+void GlassBubble::showAboveEverything(QWidget *w)
+{
+    w->show();
+    w->raise();
+    // Set NSWindow level above everything (including other always-on-top windows)
+    if (w->windowHandle()) {
+        NSView *nsView = (__bridge NSView *)reinterpret_cast<void *>(w->windowHandle()->winId());
+        if (nsView && nsView.window) {
+            [nsView.window setLevel:NSScreenSaverWindowLevel];
+            [nsView.window setIgnoresMouseEvents:YES];
+            [nsView.window orderWindow:NSWindowAbove relativeTo:0];
+            [nsView.window setCollectionBehavior:
+                NSWindowCollectionBehaviorCanJoinAllSpaces |
+                NSWindowCollectionBehaviorStationary |
+                NSWindowCollectionBehaviorFullScreenAuxiliary];
+        }
     }
 }
 

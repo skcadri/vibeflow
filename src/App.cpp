@@ -1,11 +1,13 @@
 #include "App.h"
 #include "Transcriber.h"
+#include "LivePreview.h"
 #include "TranscriptionServer.h"
 #include "AudioCapture.h"
 #include "HotkeyMonitor.h"
 #include "TextPaster.h"
 #include "data/SettingsManager.h"
 #include "ui/GlassBubble.h"
+#include "ui/LiveTextBubble.h"
 #include "ui/TrayIcon.h"
 #include "ui/RecentTranscriptionsDialog.h"
 #include "ui/VocabularyDialog.h"
@@ -27,6 +29,10 @@ App::~App()
 {
     if (m_hotkeyMonitor)
         m_hotkeyMonitor->stop();
+    if (m_liveThread) {
+        m_liveThread->quit();
+        m_liveThread->wait();
+    }
 }
 
 void App::initialize()
@@ -40,6 +46,12 @@ void App::initialize()
     m_hotkeyMonitor = new HotkeyMonitor(this);
     m_bubble = new GlassBubble();
     m_trayIcon = new TrayIcon(this);
+    m_liveText = new LiveTextBubble(m_bubble);
+    m_livePreview = new LivePreview();
+    m_liveThread = new QThread(this);
+    m_livePreview->moveToThread(m_liveThread);
+    connect(m_liveThread, &QThread::finished, m_livePreview, &QObject::deleteLater);
+    m_liveThread->start();
 
     qInfo() << "Connecting signals...";
 
@@ -47,6 +59,17 @@ void App::initialize()
     connect(m_hotkeyMonitor, &HotkeyMonitor::deactivated, this, &App::onHotkeyDeactivated);
     connect(m_hotkeyMonitor, &HotkeyMonitor::cancelled, this, &App::onHotkeyCancelled);
     connect(m_audioCapture, &AudioCapture::levelChanged, m_bubble, &GlassBubble::updateLevel);
+    connect(m_audioCapture, &AudioCapture::audioChunk, m_livePreview, &LivePreview::feed);
+    connect(m_livePreview, &LivePreview::textChanged, this, [this](const QString &committed, const QString &tentative) {
+        if (m_state != Idle) // ignore stragglers that land after the bubble closed
+            m_liveText->setText(committed, tentative);
+    });
+    m_livePreviewOn = m_settings->livePreviewEnabled();
+    m_trayIcon->setLivePreviewChecked(m_livePreviewOn);
+    connect(m_trayIcon, &TrayIcon::livePreviewChanged, this, [this](bool enabled) {
+        m_livePreviewOn = enabled;
+        m_settings->setLivePreviewEnabled(enabled);
+    });
     connect(m_transcriber, &Transcriber::modelLoaded, this, &App::onModelLoaded);
     connect(m_transcriber, &Transcriber::modelLoadFailed, this, &App::onModelLoadFailed);
     connect(m_trayIcon, &TrayIcon::inputModeChanged, this, [this](bool useTypeMode) {
@@ -147,6 +170,13 @@ void App::loadModelAsync()
         return;
     }
 
+    // Optional: without this model VibeFlow works as before, just with no live text.
+    const QString livePath = find(QStringLiteral("nemotron-speech-streaming-en-0.6b-Q8_0.gguf"));
+    if (livePath.isEmpty())
+        qInfo() << "Live preview model not found; live text is off";
+    else
+        QMetaObject::invokeMethod(m_livePreview, [this, livePath]() { m_livePreview->load(livePath); });
+
     m_trayIcon->showMessage("VibeFlow", "Loading models...");
 
     QThread *thread = QThread::create([this, qwenPath, whisperPath]() {
@@ -194,6 +224,8 @@ void App::onHotkeyActivated()
     fflush(stderr);
 
     setState(Recording);
+    if (m_livePreviewOn)
+        m_livePreview->start();
     m_audioCapture->start();
     m_bubble->setState(GlassBubble::Recording);
 }
@@ -210,6 +242,7 @@ void App::onHotkeyDeactivated()
     }
 
     m_audioCapture->stop();
+    m_livePreview->stop(); // the live text stays up until the real transcript replaces it
     setState(Processing);
     m_bubble->setState(GlassBubble::Processing);
 
@@ -221,8 +254,10 @@ void App::onHotkeyCancelled()
     if (m_state == Recording) {
         m_audioCapture->stop();
     }
+    m_livePreview->stop();
     setState(Idle);
     m_bubble->setState(GlassBubble::Hidden);
+    m_liveText->hideNow();
 }
 
 void App::onTranscriptionFinished(const QString &text)
@@ -233,6 +268,7 @@ void App::onTranscriptionFinished(const QString &text)
 
     // Hide bubble synchronously (no fade animation) so it releases focus immediately
     m_bubble->hideImmediately();
+    m_liveText->hideNow(); // nothing may linger once the text is in: it covers what the user clicks next
     setState(Idle);
 
     if (!text.isEmpty()) {

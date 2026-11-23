@@ -25,12 +25,14 @@ add_executable(VibeFlow MACOSX_BUNDLE
     src/main.cpp
     src/App.cpp
     src/Transcriber.cpp
+    src/LivePreview.cpp
     src/TranscriptionServer.cpp
     src/AudioCapture.cpp
     src/HotkeyMonitor.mm
     src/TextPaster.mm
     src/data/SettingsManager.cpp
     src/ui/GlassBubble.mm
+    src/ui/LiveTextBubble.cpp
     src/ui/WaveformWidget.cpp
     src/ui/TrayIcon.cpp
     src/ui/RecentTranscriptionsDialog.cpp

@@ -80,3 +80,16 @@ void SettingsManager::removeWord(const QString &word)
     words.removeAll(word);
     setVocabulary(words);
 }
+
+bool SettingsManager::livePreviewEnabled() const
+{
+    QSettings settings;
+    return settings.value("livePreview/enabled", true).toBool();
+}
+
+void SettingsManager::setLivePreviewEnabled(bool enabled)
+{
+    QSettings settings;
+    settings.setValue("livePreview/enabled", enabled);
+    settings.sync();
+}

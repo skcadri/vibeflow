@@ -10,7 +10,7 @@ Either way takes 10–25 minutes depending on your internet speed.
 **Requirements:**
 - macOS 14+ (Sonoma or later)
 - Apple Silicon Mac (M1/M2/M3/M4) — Intel Macs are not supported
-- ~8 GB free disk space (3.1 GB of models + Qt6 + build artifacts)
+- ~9 GB free disk space (3.8 GB of models + Qt6 + build artifacts)
 
 ---
 
@@ -29,7 +29,7 @@ Specifically:
 2. Install Homebrew if missing.
 3. brew install qt@6 cmake git
 4. Clone https://github.com/skcadri/vibeflow.git with --recurse-submodules to ~/vibeflow-src
-5. Run `bash scripts/download-model.sh` to fetch the two speech models (~3.1 GB)
+5. Run `bash scripts/download-model.sh` to fetch the speech models (~3.8 GB)
 6. Run `bash scripts/build.sh` to build and code-sign
 7. Quit any running VibeFlow, then install with:
    rm -rf /Applications/VibeFlow.app && cp -R build/VibeFlow.app /Applications/
@@ -69,7 +69,7 @@ SRC=~/vibeflow-src
 [ -d "$SRC" ] || git clone --recurse-submodules https://github.com/skcadri/vibeflow.git "$SRC"
 cd "$SRC"
 
-# 5. Download Qwen3-ASR + Whisper models (~3.1 GB, one-time)
+# 5. Download Qwen3-ASR + Whisper + Nemotron models (~3.8 GB, one-time)
 bash scripts/download-model.sh
 
 # 6. Build, bundle, code-sign
